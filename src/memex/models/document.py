@@ -281,15 +281,11 @@ def create_or_update_document_uri(session,
 
     docuri.updated = updated
 
-    if not document.web_uri:
-        parsed = urlparse.urlparse(uri)
-        if parsed.scheme in ['http', 'https']:
-            document.web_uri = uri
-
     try:
         session.flush()
     except sa.exc.IntegrityError:
         raise ConcurrentUpdateError('concurrent document uri updates')
+    return docuri
 
 
 def create_or_update_document_meta(session,
@@ -409,6 +405,34 @@ def merge_documents(session, documents, updated=None):
     return master
 
 
+def best_document_uri_from(document_uris):
+    """
+    Return the "best" DocumentURI from the given list of DocumentURIs, or None.
+
+    Return None if there's no http(s) URIs in document_uris.
+
+    """
+    # The first rel-canonical type http(s) URI found.
+    canonical_uri = None
+
+    # The first http(s) URI found that is not a self-claim or rel-canonical.
+    other_uri = None
+
+    for document_uri in document_uris:
+        uri = document_uri.uri
+        type_ = document_uri.type
+
+        if urlparse.urlparse(uri).scheme in ['http', 'https']:
+            if type_ == 'self-claim':
+                return uri
+            elif type_ == 'rel-canonical':
+                canonical_uri = canonical_uri or uri
+            else:
+                other_uri = other_uri or uri
+
+    return canonical_uri or other_uri
+
+
 def update_document_metadata(session,
                              target_uri,
                              document_meta_dicts,
@@ -463,13 +487,19 @@ def update_document_metadata(session,
 
     document.updated = updated
 
+    document_uris = []
     for document_uri_dict in document_uri_dicts:
-        create_or_update_document_uri(
-            session=session,
-            document=document,
-            created=created,
-            updated=updated,
-            **document_uri_dict)
+        document_uris.append(
+            create_or_update_document_uri(
+                session=session,
+                document=document,
+                created=created,
+                updated=updated,
+                **document_uri_dict)
+        )
+
+    if not document.web_uri:
+        document.web_uri = best_document_uri_from(document_uris)
 
     for document_meta_dict in document_meta_dicts:
         create_or_update_document_meta(

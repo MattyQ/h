@@ -231,7 +231,7 @@ class TestCreateOrUpdateDocumentURI(object):
         db_session.add(document_uri)
 
         now_ = now()
-        document.create_or_update_document_uri(
+        returned = document.create_or_update_document_uri(
             session=db_session,
             claimant=claimant,
             uri=uri,
@@ -246,6 +246,7 @@ class TestCreateOrUpdateDocumentURI(object):
         assert document_uri.updated == now_
         assert len(db_session.query(document.DocumentURI).all()) == 1, (
             "It shouldn't have added any new objects to the db")
+        assert returned == document_uri
 
     def test_it_creates_a_new_DocumentURI_if_there_is_no_existing_one(self, db_session):
         claimant = 'http://example.com/example_claimant.html'
@@ -269,7 +270,7 @@ class TestCreateOrUpdateDocumentURI(object):
             updated=updated,
         ))
 
-        document.create_or_update_document_uri(
+        returned = document.create_or_update_document_uri(
             session=db_session,
             claimant=claimant,
             uri=uri,
@@ -288,46 +289,7 @@ class TestCreateOrUpdateDocumentURI(object):
         assert document_uri.document == document_
         assert document_uri.created > created
         assert document_uri.updated > updated
-
-    def test_it_denormalizes_http_uri_to_document_when_none(self, db_session):
-        uri = 'http://example.com/example_uri.html'
-
-        document_ = document.Document(web_uri=None)
-        db_session.add(document_)
-
-        document.create_or_update_document_uri(
-            session=db_session,
-            claimant='http://example.com/example_claimant.html',
-            uri=uri,
-            type='self-claim',
-            content_type='',
-            document=document_,
-            created=now(),
-            updated=now(),
-        )
-
-        document_ = db_session.query(document.Document).get(document_.id)
-        assert document_.web_uri == uri
-
-    def test_it_denormalizes_https_uri_to_document_when_empty(self, db_session):
-        uri = 'https://example.com/example_uri.html'
-
-        document_ = document.Document(web_uri='')
-        db_session.add(document_)
-
-        document.create_or_update_document_uri(
-            session=db_session,
-            claimant='http://example.com/example_claimant.html',
-            uri=uri,
-            type='self-claim',
-            content_type='',
-            document=document_,
-            created=now(),
-            updated=now(),
-        )
-
-        document_ = db_session.query(document.Document).get(document_.id)
-        assert document_.web_uri == uri
+        assert returned == document_uri
 
     def test_it_skips_denormalizing_http_s_uri_to_document(self, db_session):
         document_ = document.Document(web_uri='http://example.com/first_uri.html')
@@ -689,6 +651,104 @@ class TestMergeDocuments(object):
         return (master, duplicate_1, duplicate_2)
 
 
+class TestBestDocumentURIFrom(object):
+
+    @pytest.mark.parametrize('uri,type_', [
+        ('http://example.com',  'self-claim'),
+        ('https://example.com', 'self-claim'),
+        ('http://example.com',  'rel-canonical'),
+        ('https://example.com',  'rel-canonical'),
+        ('http://example.com',  'rel-shortlink'),
+        ('https://example.com',  'rel-shortlink'),
+    ])
+    def test_given_a_single_http_or_https_uri_it_returns_it(self,
+                                                            factories,
+                                                            uri,
+                                                            type_):
+        document_uris = [factories.DocumentURI(uri=uri, type=type_)]
+
+        web_uri = document.best_document_uri_from(document_uris)
+
+        assert web_uri == uri
+
+    @pytest.mark.parametrize('document_uris', [
+        [],
+        [
+            ('ftp://example.com', 'self-claim'),
+            ('android-app://example.com', 'rel-canonical'),
+            ('urn:x-pdf:example', 'rel-alternate'),
+            ('doi:http://example.com', 'rel-shortlink'),
+        ],
+    ])
+    def test_if_there_are_no_http_or_https_uris_it_returns_None(self,
+                                                                factories,
+                                                                document_uris):
+        document_uri_objs = [
+            factories.DocumentURI(uri=document_uri[0], type=document_uri[1])
+            for document_uri in document_uris
+        ]
+
+        assert document.best_document_uri_from(document_uri_objs) is None
+
+    def test_it_prefers_self_claim_uris_over_other_uris(self, factories):
+        """It prefers 'self-claim' URIs over all other URIs."""
+        document_uris = [
+            factories.DocumentURI(
+                type='rel-shortlink', uri='https://example.com/shortlink'),
+            factories.DocumentURI(
+                type='rel-canonical', uri='https://example.com/canonical'),
+            factories.DocumentURI(
+                type='self-claim', uri='https://example.com/self-claim'),
+        ]
+
+        web_uri = document.best_document_uri_from(document_uris)
+
+        assert web_uri.endswith('self-claim'), web_uri
+
+    def test_it_prefers_rel_canonical_uris_over_other_uris(self, factories):
+        """It prefers 'rel-canonical' URIs over all non-self-claim URIs."""
+        document_uris = [
+            factories.DocumentURI(
+                type='rel-shortlink', uri='https://example.com/shortlink'),
+            factories.DocumentURI(
+                type='rel-canonical', uri='https://example.com/canonical'),
+        ]
+
+        web_uri = document.best_document_uri_from(document_uris)
+
+        assert web_uri.endswith('canonical'), web_uri
+
+    @pytest.mark.parametrize('uri,type_', [
+        ('http://example.com',  'rel-shortlink'),
+        ('https://example.com', 'rel-alternate'),
+    ])
+    def test_it_returns_the_first_http_uri_if_no_self_claim_or_canonical(self,
+                                                                         factories,
+                                                                         uri,
+                                                                         type_):
+        document_uris = [
+            # Put a bunch of non-http(s) URIs before and after.
+            # These should be ignored.
+            factories.DocumentURI(
+                type='self-claim', uri='ftp://example.com'),
+            factories.DocumentURI(
+                type='rel-alternate', uri='urn:x-pdf:example'),
+
+            # This is the DocumentURI that should be returned.
+            factories.DocumentURI(type=type_, uri=uri),
+
+            factories.DocumentURI(
+                type='rel-canonical', uri='android-app://example.com'),
+            factories.DocumentURI(
+                type='rel-shortlink', uri='doi:http://example.com'),
+        ]
+
+        web_uri = document.best_document_uri_from(document_uris)
+
+        assert web_uri == uri
+
+
+@pytest.mark.usefixtures('best_document_uri_from')
 class TestUpdateDocumentMetadata(object):
 
     def test_it_uses_the_target_uri_to_get_the_document(self,
@@ -833,6 +893,43 @@ class TestUpdateDocumentMetadata(object):
                 **doc_uri_dict
             )
 
+    def test_it_sets_document_web_uri(self,
+                                      annotation,
+                                      best_document_uri_from,
+                                      Document,
+                                      factories,
+                                      session):
+        document_ = mock.Mock(web_uri=None)
+        Document.find_or_create_by_uris.return_value.count.return_value = 1
+        Document.find_or_create_by_uris.return_value.first.return_value = document_
+
+        document.update_document_metadata(session,
+                                          annotation.target_uri,
+                                          [],
+                                          [],
+                                          annotation.created,
+                                          annotation.updated)
+
+        assert document_.web_uri == best_document_uri_from.return_value
+
+    def test_it_does_not_overwrite_an_existing_document_web_uri(self,
+                                                                annotation,
+                                                                Document,
+                                                                factories,
+                                                                session):
+        document_ = mock.Mock(web_uri='original')
+        Document.find_or_create_by_uris.return_value.count.return_value = 1
+        Document.find_or_create_by_uris.return_value.first.return_value = document_
+
+        document.update_document_metadata(session,
+                                          annotation.target_uri,
+                                          [],
+                                          [],
+                                          annotation.created,
+                                          annotation.updated)
+
+        assert document_.web_uri == 'original'
+
     def test_it_saves_all_the_document_metas(self,
                                              annotation,
                                              create_or_update_document_meta,
@@ -896,6 +993,10 @@ class TestUpdateDocumentMetadata(object):
     @pytest.fixture
     def annotation(self):
         return mock.Mock(spec=models.Annotation())
+
+    @pytest.fixture
+    def best_document_uri_from(self, patch):
+        return patch('memex.models.document.best_document_uri_from')
 
     @pytest.fixture
     def create_or_update_document_meta(self, patch):
