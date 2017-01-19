@@ -3,6 +3,7 @@ from codecs import open
 import logging
 
 import colander
+import jinja2
 import deform
 from pyramid.session import check_csrf_token
 from itsdangerous import BadData, SignatureExpired
@@ -155,10 +156,11 @@ class LoginSchema(CSRFSchema):
             raise err
         except UserNotActivated:
             err = colander.Invalid(node)
-            err['username'] = _("Navigate to <a href='http://docs.lab.tenablesecurity.com:8025'>the Mailhog inbox</a>. "
-                                "An email should appear including a link to activate your "
-                                "account. If the email does not appear or your account does not activate correctly, "
-                                "contact Matt Williams at mwilliams@tenable.com")
+            err['username'] = jinja2.Markup(_(
+                "Navigate to <a href='http://docs.lab.tenablesecurity.com:8025'>the Mailhog inbox</a>. "
+                "An email should appear including a link to activate your "
+                "account. If the email does not appear or your account does not activate correctly, "
+                "contact Matt Williams at mwilliams@tenable.com"))
             raise err
 
         if user is None:
