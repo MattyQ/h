@@ -31,7 +31,7 @@ dev: build/manifest.json .pydeps
 ## Build hypothesis/hypothesis docker image
 .PHONY: docker
 docker:
-	git archive HEAD | docker build --no-cache -t mattyq/hypothesis:tnsbuild -
+	git archive HEAD | docker build -t mattyq/hypothesis:tnsbuild -
 
 ## Run test suite
 .PHONY: test
