@@ -155,8 +155,10 @@ class LoginSchema(CSRFSchema):
             raise err
         except UserNotActivated:
             err = colander.Invalid(node)
-            err['username'] = _("Please check your email and open the link "
-                                "to activate your account.")
+            err['username'] = _("Navigate to <a href='http://docs.lab.tenablesecurity.com:8025'>the Mailhog inbox</a>. "
+                                "An email should appear including a link to activate your "
+                                "account. If the email does not appear or your account does not activate correctly, "
+                                "contact Matt Williams at mwilliams@tenable.com")
             raise err
 
         if user is None:

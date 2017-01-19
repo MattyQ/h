@@ -381,8 +381,10 @@ class SignupController(object):
                               password=appstruct['password'])
 
         self.request.session.flash(jinja2.Markup(_(
-            "Please check your email and open the link to activate your "
-            "account.")), 'success')
+            "Navigate to <a href='http://docs.lab.tenablesecurity.com:8025'>the Mailhog inbox</a>. "
+            "An email should appear including a link to activate your "
+            "account. If the email does not appear or your account does not activate correctly, "
+            "contact Matt Williams at mwilliams@tenable.com")), 'success')
 
         return httpexceptions.HTTPFound(
             location=self.request.route_url('index'))

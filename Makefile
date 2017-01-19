@@ -1,4 +1,4 @@
-DOCKER_TAG = dev
+DOCKER_TAG = tnsbuild
 
 GULP := node_modules/.bin/gulp
 
@@ -31,7 +31,7 @@ dev: build/manifest.json .pydeps
 ## Build hypothesis/hypothesis docker image
 .PHONY: docker
 docker:
-	git archive HEAD | docker build -t hypothesis/hypothesis:$(DOCKER_TAG) -
+	git archive HEAD | docker build --no-cache -t mattyq/hypothesis:tnsbuild -
 
 ## Run test suite
 .PHONY: test

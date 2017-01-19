@@ -49,3 +49,4 @@ ENV PYTHONPATH /var/lib/hypothesis:$PYTHONPATH
 # Start the web server by default
 USER hypothesis
 CMD ["newrelic-admin", "run-program", "gunicorn", "--paste", "conf/app.ini"]
+CMD ["hypothesis celery worker"]
