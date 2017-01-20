@@ -381,10 +381,11 @@ class SignupController(object):
                               password=appstruct['password'])
 
         self.request.session.flash(jinja2.Markup(_(
-            "Navigate to <a href='http://docs.lab.tenablesecurity.com:8025'>the Mailhog inbox</a>. "
-            "An email should appear including a link to activate your "
-            "account. If the email does not appear or your account does not activate correctly, "
-            "contact Matt Williams at mwilliams@tenable.com")), 'success')
+            "Please check your email and open the link to activate your "
+            "account. The email may take up to 30 minutes to arrive. "
+            "If you would like to activate your account faster, or if "
+            "the email does not arrive, contact Matt Williams at "
+            "mwilliams@tenable.com")), 'success')
 
         return httpexceptions.HTTPFound(
             location=self.request.route_url('index'))
@@ -695,3 +696,4 @@ def dismiss_sidebar_tutorial(request):
     else:
         request.authenticated_user.sidebar_tutorial_dismissed = True
         return ajax_payload(request, {'status': 'okay'})
+
