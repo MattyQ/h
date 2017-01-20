@@ -48,4 +48,4 @@ ENV PYTHONPATH /var/lib/hypothesis:$PYTHONPATH
 
 # Start the web server by default
 USER hypothesis
-CMD ["sh", "start.sh"]
+CMD ["sh", "start-hypothesis.sh"]
