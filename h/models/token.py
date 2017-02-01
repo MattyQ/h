@@ -9,6 +9,7 @@ import os
 import sqlalchemy
 from sqlalchemy.dialects import postgresql
 
+from h import security
 from h.auth.interfaces import IAuthenticationToken
 from h.db import Base
 from h.db import mixins
@@ -39,6 +40,13 @@ class Token(Base, mixins.Timestamps):
     #: A NULL value in this column indicates a token that does not expire.
     expires = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
 
+    #: A refresh token that can be exchanged for a new token (with a new value
+    #: and expiry time). A NULL value in this column indicates a token that
+    #: cannot be refreshed.
+    refresh_token = sqlalchemy.Column(sqlalchemy.UnicodeText(),
+                                      unique=True,
+                                      nullable=True)
+
     _authclient_id = sqlalchemy.Column('authclient_id',
                                        postgresql.UUID(),
                                        sqlalchemy.ForeignKey('authclient.id', ondelete='cascade'),
@@ -52,6 +60,28 @@ class Token(Base, mixins.Timestamps):
         super(Token, self).__init__(**kwargs)
         self.regenerate()
 
+        if self.expires:
+            self.refresh_token = security.token_urlsafe()
+
+    @property
+    def expired(self):
+        """True if this token has expired, False otherwise."""
+        return self.expires and datetime.datetime.utcnow() > self.expires
+
+    @property
+    def ttl(self):
+        """The amount of time from now until this token expires, in seconds."""
+        if not self.expires:
+            return None
+
+        now = datetime.datetime.utcnow()
+        ttl = self.expires - now
+        ttl_in_seconds = ttl.total_seconds()
+        # We truncate (rather than round) ttl_in_seconds to get an int.
+        # For example 2.3 beccomes 2, but 2.9 also becomes 2.
+        ttl_in_seconds_truncated = int(ttl_in_seconds)
+        return ttl_in_seconds_truncated
+
     @classmethod
     def get_dev_token_by_userid(cls, session, userid):
         return (session.query(cls)
@@ -60,9 +90,4 @@ class Token(Base, mixins.Timestamps):
                 .first())
 
     def regenerate(self):
-        self.value = self.prefix + _token()
-
-
-def _token():
-    """Return a random string suitable for use in an API token."""
-    return binascii.hexlify(os.urandom(16))
+        self.value = self.prefix + security.token_urlsafe()

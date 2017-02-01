@@ -3,10 +3,12 @@
 import mock
 import pytest
 
+from pyramid.config import Configurator
 from pyramid import testing
 
 from memex import presenters
 from memex import views
+from memex.resources import AnnotationResource
 from memex.schemas import ValidationError
 from memex.search.core import SearchResult
 
@@ -35,54 +37,94 @@ class TestError(object):
         assert pyramid_request.response.status_code == 400
 
 
-@pytest.mark.usefixtures('view_config')
-class TestApiConfigDecorator(object):
-    def test_it_sets_accept_setting(self):
-        settings = views.api_config()
-        assert settings['accept'] == 'application/json'
+class TestAddApiView(object):
+    def test_it_sets_accept_setting(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view)
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['accept'] == 'application/json'
 
-    def test_it_allows_accept_setting_override(self):
-        settings = views.api_config(accept='application/xml')
-        assert settings['accept'] == 'application/xml'
+    def test_it_allows_accept_setting_override(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view, accept='application/xml')
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['accept'] == 'application/xml'
 
-    def test_it_sets_renderer_setting(self):
-        settings = views.api_config()
-        assert settings['renderer'] == 'json'
+    def test_it_sets_renderer_setting(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view)
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['renderer'] == 'json'
 
-    def test_it_allows_renderer_setting_override(self):
-        settings = views.api_config(renderer='xml')
-        assert settings['renderer'] == 'xml'
+    def test_it_allows_renderer_setting_override(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view, renderer='xml')
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['renderer'] == 'xml'
 
-    def test_it_sets_cors_decorator(self):
-        settings = views.api_config()
-        assert settings['decorator'] == views.cors_policy
+    def test_it_sets_cors_decorator(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view)
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['decorator'] == views.cors_policy
 
-    def test_it_allows_decorator_override(self):
+    def test_it_allows_decorator_override(self, pyramid_config, view):
         decorator = mock.Mock()
-        settings = views.api_config(decorator=decorator)
-        assert settings['decorator'] == decorator
+        views.add_api_view(pyramid_config, view, decorator=decorator)
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['decorator'] == decorator
 
-    def test_it_adds_OPTIONS_to_allowed_request_methods(self):
-        settings = views.api_config(request_method='DELETE')
-        assert settings['request_method'] == ('DELETE', 'OPTIONS')
+    def test_it_adds_OPTIONS_to_allowed_request_methods(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view, request_method='DELETE')
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['request_method'] == ('DELETE', 'OPTIONS')
 
-    def test_it_adds_all_request_methods_when_not_defined(self):
-        settings = views.api_config()
-        assert settings['request_method'] == (
+    def test_it_adds_all_request_methods_when_not_defined(self, pyramid_config, view):
+        views.add_api_view(pyramid_config, view)
+        (_, kwargs) = pyramid_config.add_view.call_args
+        assert kwargs['request_method'] == (
             'DELETE', 'GET', 'HEAD', 'POST', 'PUT', 'OPTIONS')
 
+    @pytest.mark.parametrize('link_name,description,request_method,expected_method', [
+        ('thing.read', 'Fetch a thing', None, 'GET'),
+        ('thing.update', 'Update a thing', ('PUT', 'PATCH'), 'PUT'),
+        ('thing.delete', 'Delete a thing', 'DELETE', 'DELETE'),
+    ])
+    def test_it_adds_api_links_to_registry(self, pyramid_config, view,
+                                           link_name, description, request_method,
+                                           expected_method):
+        kwargs = {}
+        if request_method:
+            kwargs['request_method'] = request_method
+
+        views.add_api_view(pyramid_config, view=view,
+                           link_name=link_name,
+                           description=description,
+                           route_name=link_name,
+                           **kwargs)
+
+        assert pyramid_config.registry.api_links == [{
+            'name': link_name,
+            'description': description,
+            'method': expected_method,
+            'route_name': link_name,
+        }]
+
     @pytest.fixture
-    def view_config(self, patch):
-        def _return_kwargs(**kwargs):
-            return kwargs
-        json_view = patch('memex.views.view_config')
-        json_view.side_effect = _return_kwargs
-        return json_view
+    def pyramid_config(self, pyramid_config):
+        pyramid_config.add_view = mock.Mock()
+        return pyramid_config
+
+    @pytest.fixture
+    def view(self):
+        return mock.Mock()
 
 
 class TestIndex(object):
 
     def test_it_returns_the_right_links(self, pyramid_config, pyramid_request):
+
+        # Scan `memex.views` for API link metadata specified in @api_config
+        # declarations.
+        config = Configurator()
+        config.scan('memex.views')
+        pyramid_request.registry.api_links = config.registry.api_links
+
         pyramid_config.add_route('api.search', '/dummy/search')
         pyramid_config.add_route('api.annotations', '/dummy/annotations')
         pyramid_config.add_route('api.annotation', '/dummy/annotations/:id')
@@ -107,7 +149,7 @@ class TestIndex(object):
         assert links['search']['url'] == host + '/dummy/search'
 
 
-@pytest.mark.usefixtures('links_service', 'search_lib')
+@pytest.mark.usefixtures('group_service', 'links_service', 'search_lib')
 class TestSearch(object):
 
     def test_it_searches(self, pyramid_request, search_lib):
@@ -129,17 +171,17 @@ class TestSearch(object):
         storage.fetch_ordered_annotations.assert_called_once_with(
             pyramid_request.db, ['row-1', 'row-2'], query_processor=mock.ANY)
 
-    def test_it_renders_search_results(self, links_service, pyramid_request, search_run, factories):
-        ann1 = factories.Annotation(userid='luke')
-        ann2 = factories.Annotation(userid='sarah')
+    def test_it_renders_search_results(self, links_service, pyramid_request, search_run, factories, group_service):
+        ann1 = AnnotationResource(factories.Annotation(userid='luke'), group_service, links_service)
+        ann2 = AnnotationResource(factories.Annotation(userid='sarah'), group_service, links_service)
 
-        search_run.return_value = SearchResult(2, [ann1.id, ann2.id], [], {})
+        search_run.return_value = SearchResult(2, [ann1.annotation.id, ann2.annotation.id], [], {})
 
         expected = {
             'total': 2,
             'rows': [
-                presenters.AnnotationJSONPresenter(ann1, links_service).asdict(),
-                presenters.AnnotationJSONPresenter(ann2, links_service).asdict(),
+                presenters.AnnotationJSONPresenter(ann1).asdict(),
+                presenters.AnnotationJSONPresenter(ann2).asdict(),
             ]
         }
 
@@ -154,21 +196,23 @@ class TestSearch(object):
         assert mock.call(pyramid_request.db, ['reply-1', 'reply-2'],
                          query_processor=mock.ANY) in storage.fetch_ordered_annotations.call_args_list
 
-    def test_it_renders_replies(self, links_service, pyramid_request, search_run, factories):
-        ann = factories.Annotation(userid='luke')
-        reply1 = factories.Annotation(userid='sarah', references=[ann.id])
-        reply2 = factories.Annotation(userid='sarah', references=[ann.id])
+    def test_it_renders_replies(self, links_service, pyramid_request, search_run, factories, group_service):
+        ann = AnnotationResource(factories.Annotation(userid='luke'), group_service, links_service)
+        reply1 = AnnotationResource(factories.Annotation(userid='sarah', references=[ann.annotation.id]), group_service, links_service)
+        reply2 = AnnotationResource(factories.Annotation(userid='sarah', references=[ann.annotation.id]), group_service, links_service)
 
-        search_run.return_value = SearchResult(1, [ann.id], [reply1.id, reply2.id], {})
+        search_run.return_value = SearchResult(1,
+                                               [ann.annotation.id],
+                                               [reply1.annotation.id, reply2.annotation.id], {})
 
         pyramid_request.params = {'_separate_replies': '1'}
 
         expected = {
             'total': 1,
-            'rows': [presenters.AnnotationJSONPresenter(ann, links_service).asdict()],
+            'rows': [presenters.AnnotationJSONPresenter(ann).asdict()],
             'replies': [
-                presenters.AnnotationJSONPresenter(reply1, links_service).asdict(),
-                presenters.AnnotationJSONPresenter(reply2, links_service).asdict(),
+                presenters.AnnotationJSONPresenter(reply1).asdict(),
+                presenters.AnnotationJSONPresenter(reply2).asdict(),
             ]
         }
 
@@ -251,14 +295,17 @@ class TestCreate(object):
 
     def test_it_inits_AnnotationJSONPresenter(self,
                                               AnnotationJSONPresenter,
+                                              annotation_resource,
                                               links_service,
+                                              group_service,
                                               pyramid_request,
                                               storage):
         views.create(pyramid_request)
 
-        AnnotationJSONPresenter.assert_called_once_with(
-            storage.create_annotation.return_value,
-            links_service)
+        annotation_resource.assert_called_once_with(
+                storage.create_annotation.return_value, group_service, links_service)
+
+        AnnotationJSONPresenter.assert_called_once_with(annotation_resource.return_value)
 
     def test_it_publishes_annotation_event(self,
                                            AnnotationEvent,
@@ -290,19 +337,12 @@ class TestCreate(object):
         pyramid_request.notify_after_commit = mock.Mock()
         return pyramid_request
 
-    @pytest.fixture
-    def group_service(self, pyramid_config):
-        group_service = mock.Mock(spec_set=['find'])
-        pyramid_config.register_service(group_service, iface='memex.interfaces.IGroupService')
-        return group_service
-
 
 @pytest.mark.usefixtures('AnnotationJSONPresenter', 'links_service')
 class TestRead(object):
 
     def test_it_returns_presented_annotation(self,
                                              AnnotationJSONPresenter,
-                                             links_service,
                                              pyramid_request):
         context = mock.Mock()
         presenter = mock.Mock()
@@ -310,8 +350,8 @@ class TestRead(object):
 
         result = views.read(context, pyramid_request)
 
-        AnnotationJSONPresenter.assert_called_once_with(context.annotation,
-                                                        links_service)
+        AnnotationJSONPresenter.assert_called_once_with(context)
+
         assert result == presenter.asdict()
 
 
@@ -332,7 +372,6 @@ class TestReadJSONLD(object):
 
     def test_it_returns_presented_annotation(self,
                                              AnnotationJSONLDPresenter,
-                                             links_service,
                                              pyramid_request):
         context = mock.Mock()
         presenter = mock.Mock()
@@ -341,8 +380,7 @@ class TestReadJSONLD(object):
 
         result = views.read_jsonld(context, pyramid_request)
 
-        AnnotationJSONLDPresenter.assert_called_once_with(context.annotation,
-                                                          links_service)
+        AnnotationJSONLDPresenter.assert_called_once_with(context)
         assert result == presenter.asdict()
 
     @pytest.fixture
@@ -353,6 +391,7 @@ class TestReadJSONLD(object):
 @pytest.mark.usefixtures('AnnotationEvent',
                          'AnnotationJSONPresenter',
                          'links_service',
+                         'group_service',
                          'schemas',
                          'storage')
 class TestUpdate(object):
@@ -435,14 +474,17 @@ class TestUpdate(object):
 
     def test_it_inits_a_presenter(self,
                                   AnnotationJSONPresenter,
+                                  annotation_resource,
+                                  group_service,
                                   links_service,
                                   pyramid_request,
                                   storage):
         views.update(mock.Mock(), pyramid_request)
 
-        AnnotationJSONPresenter.assert_any_call(
-            storage.update_annotation.return_value,
-            links_service)
+        annotation_resource.assert_called_once_with(
+                storage.update_annotation.return_value, group_service, links_service)
+
+        AnnotationJSONPresenter.assert_any_call(annotation_resource.return_value)
 
     def test_it_dictizes_the_presenter(self,
                                        AnnotationJSONPresenter,
@@ -513,10 +555,22 @@ def AnnotationJSONPresenter(patch):
 
 
 @pytest.fixture
+def annotation_resource(patch):
+    return patch('memex.views.AnnotationResource')
+
+
+@pytest.fixture
 def links_service(pyramid_config):
     service = mock.Mock(spec_set=['get', 'get_all'])
     pyramid_config.register_service(service, name='links')
     return service
+
+
+@pytest.fixture
+def group_service(pyramid_config):
+    group_service = mock.Mock(spec_set=['find'])
+    pyramid_config.register_service(group_service, iface='memex.interfaces.IGroupService')
+    return group_service
 
 
 @pytest.fixture

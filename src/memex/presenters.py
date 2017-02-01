@@ -6,12 +6,13 @@ Presenters for API data.
 import collections
 import copy
 
+from pyramid import security
+
 
 class AnnotationBasePresenter(object):
-    def __init__(self, annotation, links_service):
-        self.annotation = annotation
-
-        self._links_service = links_service
+    def __init__(self, annotation_resource):
+        self.annotation_resource = annotation_resource
+        self.annotation = annotation_resource.annotation
 
     @property
     def created(self):
@@ -26,7 +27,7 @@ class AnnotationBasePresenter(object):
     @property
     def links(self):
         """A dictionary of named hypermedia links for this annotation."""
-        return self._links_service.get_all(self.annotation)
+        return self.annotation_resource.links
 
     @property
     def text(self):
@@ -83,7 +84,26 @@ class AnnotationJSONPresenter(AnnotationBasePresenter):
 
     @property
     def permissions(self):
-        return _permissions(self.annotation)
+        """
+        Return a permissions dict for the given annotation.
+
+        Converts our simple internal annotation storage format into the legacy
+        complex permissions dict format that is still used in some places.
+
+        """
+        read = self.annotation.userid
+        if self.annotation.shared:
+            read = 'group:{}'.format(self.annotation.groupid)
+
+            principals = security.principals_allowed_by_permission(
+                    self.annotation_resource, 'read')
+            if security.Everyone in principals:
+                read = 'group:__world__'
+
+        return {'read': [read],
+                'admin': [self.annotation.userid],
+                'update': [self.annotation.userid],
+                'delete': [self.annotation.userid]}
 
 
 class AnnotationSearchIndexPresenter(AnnotationBasePresenter):
@@ -106,7 +126,6 @@ class AnnotationSearchIndexPresenter(AnnotationBasePresenter):
             'tags': self.tags,
             'tags_raw': self.tags,
             'group': self.annotation.groupid,
-            'permissions': self.permissions,
             'shared': self.annotation.shared,
             'target': self.target,
             'document': docpresenter.asdict(),
@@ -124,10 +143,6 @@ class AnnotationSearchIndexPresenter(AnnotationBasePresenter):
         # The search index presenter has no need to generate links, and so the
         # `links_service` parameter has been removed from the constructor.
         raise NotImplementedError("search index presenter doesn't have links")
-
-    @property
-    def permissions(self):
-        return _permissions(self.annotation)
 
 
 class AnnotationJSONLDPresenter(AnnotationBasePresenter):
@@ -155,7 +170,7 @@ class AnnotationJSONLDPresenter(AnnotationBasePresenter):
 
     @property
     def id(self):
-        return self._links_service.get(self.annotation, 'jsonld_id')
+        return self.annotation_resource.link('jsonld_id')
 
     @property
     def bodies(self):

@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import functools
 import logging
-import os
 
 import click
 from pyramid import paster
@@ -15,8 +14,11 @@ from h import __version__
 log = logging.getLogger('h')
 
 SUBCOMMANDS = (
+    'h.cli.commands.authclient.authclient',
     'h.cli.commands.celery.celery',
     'h.cli.commands.devserver.devserver',
+    'h.cli.commands.groups.groups',
+    'h.cli.commands.init.init',
     'h.cli.commands.initdb.initdb',
     'h.cli.commands.migrate.migrate',
     'h.cli.commands.move_uri.move_uri',
@@ -33,13 +35,6 @@ def bootstrap(app_url, dev=False):
 
     Returns a bootstrapped request object.
     """
-    # Set a flag in the environment that other code can use to detect if it's
-    # running in a script rather than a full web application.
-    #
-    # FIXME: This is a nasty hack and should go when we no longer need to spin
-    # up an entire application to build the extensions.
-    os.environ['H_SCRIPT'] = 'true'
-
     # In development, we will happily provide a default APP_URL, but it must be
     # set in production mode.
     if not app_url:

@@ -19,7 +19,7 @@ class TestAPI(object):
         res = app.get('/api/annotations/' + annotation.id + '.jsonld')
         data = res.json
         assert data['@context'] == 'http://www.w3.org/ns/anno.jsonld'
-        assert data['id'] == 'http://localhost/a/' + annotation.id
+        assert data['id'] == 'http://example.com/a/' + annotation.id
 
     def test_annotation_write_unauthorized_group(self, app, user_with_token, non_writeable_group):
         """
@@ -49,10 +49,22 @@ class TestAPI(object):
         assert res.status_code == 400
         assert res.json['reason'].startswith('group:')
 
+    def test_profile_api(self, app, user_with_token):
+        """Fetch a profile through the API for an authenticated user."""
+
+        user, token = user_with_token
+
+        headers = {'Authorization': str('Bearer {}'.format(token.value))}
+
+        res = app.get('/api/profile', headers=headers)
+
+        assert res.json['userid'] == user.userid
+        assert [group['id'] for group in res.json['groups']] == ['__world__']
+
 
 @pytest.fixture
 def annotation(db_session, factories):
-    ann =  factories.Annotation(userid='acct:testuser@localhost',
+    ann =  factories.Annotation(userid='acct:testuser@example.com',
                                 groupid='__world__',
                                 shared=True)
     db_session.commit()
@@ -62,7 +74,6 @@ def annotation(db_session, factories):
 @pytest.fixture
 def user(db_session, factories):
     user = factories.User()
-    db_session.add(user)
     db_session.commit()
     return user
 

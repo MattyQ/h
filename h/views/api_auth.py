@@ -2,7 +2,6 @@
 
 from __future__ import unicode_literals
 
-from h.services.oauth import TOKEN_TTL
 from h.exceptions import OAuthTokenError
 from h.util.view import cors_json_view
 
@@ -11,16 +10,21 @@ from h.util.view import cors_json_view
 def access_token(request):
     svc = request.find_service(name='oauth')
 
-    user, authclient = svc.verify_jwt_bearer(
-        assertion=request.POST.get('assertion'),
-        grant_type=request.POST.get('grant_type'))
+    user, authclient = svc.verify_token_request(request.POST)
     token = svc.create_token(user, authclient)
 
-    return {
+    response = {
         'access_token': token.value,
         'token_type': 'bearer',
-        'expires_in': TOKEN_TTL.total_seconds(),
     }
+
+    if token.expires:
+        response['expires_in'] = token.ttl
+
+    if token.refresh_token:
+        response['refresh_token'] = token.refresh_token
+
+    return response
 
 
 @cors_json_view(context=OAuthTokenError)
