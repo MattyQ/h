@@ -109,7 +109,7 @@ def includeme(config):
     config.add_route('blog', '/blog/', static=True)
     config.add_route(
         'chrome-extension',
-        'https://chrome.google.com/webstore/detail/bjfhmglciegochdpefhhlphglcehbmek',
+        'http://docs.lab.tenablesecurity.com/hypothesis/installextension.htm',
         static=True)
     config.add_route('contact', '/contact/', static=True)
     config.add_route('contribute', '/contribute/', static=True)
