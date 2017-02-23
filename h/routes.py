@@ -99,9 +99,9 @@ def includeme(config):
                      traverse='/{pubid}')
 
     # Help
-    config.add_route('help', '/docs/help')
-    config.add_route('onboarding', '/welcome/')
-    config.add_route('custom_onboarding', '/welcome/{slug}')
+    config.add_route('help', 'http://docs.lab.tenablesecurity.com/hypothesis/howto')
+    config.add_route('onboarding', 'http://docs.lab.tenablesecurity.com/hypothesis/howto')
+    config.add_route('custom_onboarding', 'http://docs.lab.tenablesecurity.com/hypothesis/howto')
 
     # Notification
     config.add_route('unsubscribe', '/notification/unsubscribe/{token}')
