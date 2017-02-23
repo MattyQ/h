@@ -48,7 +48,7 @@ RUN npm install --production \
   && npm cache clean
 
 # Expose the default port.
-EXPOSE 80
+EXPOSE 5000
 
 # Set the application environment
 ENV PATH /var/lib/hypothesis/bin:$PATH
