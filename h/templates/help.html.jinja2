@@ -24,19 +24,11 @@
     </div>
     <article class="help-page-content">
       {% if is_help %}
-        <section class="help-page-section">
-          <h2 id="installation" class="help-page-heading">Installation</h2>
-          <p class="help-page-lede">There are a couple of installations of Hypothesis to choose from:</p>
-          <div class="numbered-list grid">
-            <div class="column-desktop-1-2"><div class="numbered-list-item">If you want to annotate and comment on documents then install our <a href="{{ request.route_url('chrome-extension') }}">browser extension</a>.</div></div>
-            <div class="column-desktop-1-2"><div class="numbered-list-item">If you wish to install Hypothesis on your own site then head over to GitHub.</div></div>
-          </div>
-        </section>
       {% endif %}
       {% if is_onboarding %}
         <section class="help-page-section">
           <h2 id="getting-started" class="help-page-heading">Getting started</h2>
-          <p class="help-page-lede">Now you have the extension up and running. It's time to
+          <p class="help-page-lede">It's time to
             start annotating some documents.</p>
           <div class="numbered-list grid">
             <div class="column-desktop-1-2"><div class="numbered-list-item">Create an account using the sidebar on the right of the screen.</div></div>
@@ -108,9 +100,6 @@
         <h2 class="help-page-heading">Resources</h2>
         <div class="styled-text">
           <ul>
-            <li>View the <a href="https://hypothes.is/roadmap/">product roadmap</a> to check out what we're working on.</li>
-            <li>Request features, report bugs and meet other users in our <a href="https://groups.google.com/forum/#!forum/hypothesis-forum">discussion forums</a>.</li>
-            <li>If you need help please don't hesitate to <a href="mailto:support@hypothes.is">get in touch</a>.</li>
             <li>Visit <a href="https://hypothes.is/about/">our website</a> to learn more about the project.</li>
             <li>Check out the code on <a href="https://github.com/hypothesis/h">GitHub</a>.</li>
           </ul>
