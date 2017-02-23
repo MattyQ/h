@@ -123,7 +123,7 @@ def includeme(config):
     config.add_route('for-publishers', '/for-publishers/', static=True)
     config.add_route('fund', '/fund/', static=True)
     config.add_route(
-        'help-center', 'https://hypothesis.zendesk.com/hc/en-us', static=True)
+        'help-center', 'http://docs.lab.tenablesecurity.com/hypothesis/howto', static=True)
     config.add_route(
         'hypothesis-github', 'https://github.com/hypothesis', static=True)
     config.add_route(
