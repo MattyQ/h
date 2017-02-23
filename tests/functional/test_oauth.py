@@ -3,6 +3,7 @@
 
 from __future__ import unicode_literals
 
+import calendar
 import datetime
 
 import jwt
@@ -19,16 +20,16 @@ class TestOAuth(object):
 
         # Test that you can use the access token to authorize with the API.
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={'Authorization': str('Bearer {}'.format(access_token))},
         )
 
     def test_request_fails_if_access_token_wrong(self, app, authclient,
                                                  userid):
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={'Authorization': str('Bearer wrong')},
-            status=404,
+            status=401,
         )
 
     def test_request_fails_if_access_token_expired(self, app, authclient,
@@ -40,9 +41,9 @@ class TestOAuth(object):
         db_session.commit()
 
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={'Authorization': str('Bearer {}'.format(token))},
-            status=404,
+            status=401,
         )
 
     def test_using_a_refresh_token(self, app, authclient, userid):
@@ -64,7 +65,7 @@ class TestOAuth(object):
 
         # Test that the new access token works.
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={
                 'Authorization': str('Bearer {}'.format(new_access_token)),
             },
@@ -72,7 +73,7 @@ class TestOAuth(object):
 
         # Test that the old access token still works, too.
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={
                 'Authorization': str('Bearer {}'.format(old_access_token)),
             },
@@ -115,23 +116,37 @@ class TestOAuth(object):
         refresh_token = response['refresh_token']
 
         app.get(
-            '/api/profile',
+            '/api/debug-token',
             headers={'Authorization': str('Bearer {}'.format(refresh_token))},
-            status=404,
+            status=401,
         )
 
     def get_access_token(self, app, authclient, userid):
         """Get an access token by POSTing a grant token to /api/token."""
+        claims = {
+            'iss': authclient.id,
+            'aud': 'localhost',
+            'sub': userid,
+            'nbf': self.epoch(),
+            'exp': self.epoch(delta=datetime.timedelta(minutes=5)),
+        }
         response = app.post(
             '/api/token',
             {
                 'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion': jwt.encode({'iss': authclient.id,
-                                         'aud': 'localhost',
-                                         'sub': userid,
-                                         }, authclient.secret)},
+                'assertion': jwt.encode(claims, authclient.secret)
+            },
         )
         return response.json_body
+
+    def epoch(self, delta=None):
+        """Get a Unix timestamp for the current time, with optional offset."""
+        timestamp = datetime.datetime.utcnow()
+
+        if delta is not None:
+            timestamp = timestamp + delta
+
+        return calendar.timegm(timestamp.utctimetuple())
 
     @pytest.fixture
     def authclient(self, db_session, factories):

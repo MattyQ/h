@@ -23,8 +23,7 @@ if not os.environ.get('GUNICORN_STATS_DISABLE', None):
         statsd_host = '{}:{}'.format(_host, _port)
 
     if 'STATSD_PREFIX' in os.environ:
-        _hostname = socket.gethostname()
-        statsd_prefix = '.'.join([os.environ['STATSD_PREFIX'], _hostname])
+        statsd_prefix = os.environ['STATSD_PREFIX']
 
 
 def post_fork(server, worker):
@@ -39,3 +38,11 @@ def post_fork(server, worker):
         import psycogreen.gevent
         psycogreen.gevent.patch_psycopg()
         worker.log.info("Made psycopg green")
+
+
+def when_ready(server):
+    name = server.proc_name
+    if name == 'web' and 'WEB_NUM_WORKERS' in os.environ:
+        server.num_workers = int(os.environ['WEB_NUM_WORKERS'])
+    elif name == 'websocket' and 'WEBSOCKET_NUM_WORKERS' in os.environ:
+        server.num_workers = int(os.environ['WEBSOCKET_NUM_WORKERS'])

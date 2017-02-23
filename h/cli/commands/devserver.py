@@ -67,8 +67,6 @@ def devserver(https, web, ws, worker, assets, beat):
         gunicorn_args = '--certfile=.tlscert.pem --keyfile=.tlskey.pem'
         os.environ['APP_URL'] = 'https://localhost:5000'
         os.environ['WEBSOCKET_URL'] = 'wss://localhost:5001/ws'
-        os.environ['ALLOWED_ORIGINS'] = ' '.join(
-            ['https://localhost:5000', os.environ.get('ALLOWED_ORIGINS', '')])
     else:
         gunicorn_args = ''
         os.environ['APP_URL'] = 'http://localhost:5000'
@@ -76,10 +74,10 @@ def devserver(https, web, ws, worker, assets, beat):
 
     m = Manager()
     if web:
-        m.add_process('web', 'gunicorn --reload --paste conf/development-app.ini %s' % gunicorn_args)
+        m.add_process('web', 'gunicorn --name web --reload --paste conf/development-app.ini %s' % gunicorn_args)
 
     if ws:
-        m.add_process('ws', 'gunicorn --reload --paste conf/development-websocket.ini %s' % gunicorn_args)
+        m.add_process('ws', 'gunicorn --name websocket --reload --paste conf/development-websocket.ini %s' % gunicorn_args)
 
     if worker:
         m.add_process('worker', 'hypothesis --dev celery worker --autoreload')

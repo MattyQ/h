@@ -54,7 +54,6 @@ SETTINGS = [
     EnvSetting('mail.default_sender', 'MAIL_DEFAULT_SENDER'),
     EnvSetting('mail.host', 'MAIL_HOST'),
     EnvSetting('mail.port', 'MAIL_PORT', type=int),
-    EnvSetting('origins', 'ALLOWED_ORIGINS'),
     EnvSetting('sqlalchemy.url', 'DATABASE_URL', type=database_url),
     EnvSetting('statsd.host', 'STATSD_HOST'),
     EnvSetting('statsd.port', 'STATSD_PORT', type=int),
@@ -74,6 +73,7 @@ SETTINGS = [
     EnvSetting('h.bouncer_url', 'BOUNCER_URL'),
     EnvSetting('h.client_id', 'CLIENT_ID'),
     EnvSetting('h.client_secret', 'CLIENT_SECRET'),
+    EnvSetting('h.client_url', 'CLIENT_URL'),
     EnvSetting('h.proxy_auth', 'PROXY_AUTH', type=asbool),
     EnvSetting('h.websocket_url', 'WEBSOCKET_URL'),
     # The client Sentry DSN should be of the public kind, lacking the password
@@ -112,9 +112,5 @@ def configure(environ=None, settings=None):
         if settings['debug_query'] == 'trace':
             level = logging.DEBUG
         logging.getLogger('sqlalchemy.engine').setLevel(level)
-
-    if 'STATSD_PREFIX' in os.environ:
-        hostname = socket.gethostname()
-        settings['statsd.prefix'] = '.'.join([os.environ['STATSD_PREFIX'], hostname])
 
     return Configurator(settings=settings)

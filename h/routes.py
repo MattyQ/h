@@ -40,6 +40,8 @@ def includeme(config):
     config.add_route('admin_cohorts_edit', '/admin/features/cohorts/{id}')
     config.add_route('admin_groups', '/admin/groups')
     config.add_route('admin_groups_csv', '/admin/groups.csv')
+    config.add_route('admin_mailer', '/admin/mailer')
+    config.add_route('admin_mailer_test', '/admin/mailer/test')
     config.add_route('admin_nipsa', '/admin/nipsa')
     config.add_route('admin_staff', '/admin/staff')
     config.add_route('admin_users', '/admin/users')
@@ -63,12 +65,13 @@ def includeme(config):
     # API (other than those provided by memex)
     config.add_route('badge', '/api/badge')
     config.add_route('api.profile', '/api/profile')
+    config.add_route('api.debug_token', '/api/debug-token')
     config.add_route('token', '/api/token')
     config.add_route('api.users', '/api/users')
 
     # Client
     config.add_route('session', '/app')
-    config.add_route('widget', '/app.html')
+    config.add_route('sidebar_app', '/app.html')
     config.add_route('embed', '/embed.js')
 
     # Feeds
@@ -102,6 +105,9 @@ def includeme(config):
 
     # Notification
     config.add_route('unsubscribe', '/notification/unsubscribe/{token}')
+
+    # Health check
+    config.add_route('status', '/_status')
 
     # Static
     config.add_route('about', '/about/', static=True)

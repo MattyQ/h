@@ -4,6 +4,8 @@ MAINTAINER Hypothes.is Project and contributors
 # Install system build and runtime dependencies.
 RUN apk-install \
     ca-certificates \
+    collectd \
+    collectd-nginx \
     libffi \
     libpq \
     nginx \
@@ -38,6 +40,11 @@ COPY conf/nginx.conf.tpl /etc/nginx/nginx.conf.tpl
 COPY conf/nginx.conf.tpl /etc/nginx/nginx.conf
 RUN chown hypothesis:hypothesis /etc/nginx/nginx.conf
 
+# Copy collectd config
+COPY conf/collectd.conf /etc/collectd/collectd.conf
+RUN mkdir /etc/collectd/collectd.conf.d \
+ && chown hypothesis:hypothesis /etc/collectd/collectd.conf.d
+
 # Copy the rest of the application files.
 COPY . .
 
@@ -57,4 +64,4 @@ ENV PYTHONPATH /var/lib/hypothesis:$PYTHONPATH
 
 # Start the web server by default
 USER hypothesis
-CMD ["supervisord", "-c" , "conf/supervisord.conf"]
+CMD ["init-env", "supervisord", "-c" , "conf/supervisord.conf"]

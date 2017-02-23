@@ -49,6 +49,20 @@ class TestAPI(object):
         assert res.status_code == 400
         assert res.json['reason'].startswith('group:')
 
+    def test_anonymous_profile_api(self, app):
+        """
+        Fetch an anonymous "profile".
+
+        With no authentication and no authority parameter, this should default
+        to the site's `auth_domain` and show only the global group.
+        """
+
+        res = app.get('/api/profile')
+
+        assert res.json['userid'] is None
+        assert res.json['authority'] == 'example.com'
+        assert [group['id'] for group in res.json['groups']] == ['__world__']
+
     def test_profile_api(self, app, user_with_token):
         """Fetch a profile through the API for an authenticated user."""
 
@@ -60,6 +74,20 @@ class TestAPI(object):
 
         assert res.json['userid'] == user.userid
         assert [group['id'] for group in res.json['groups']] == ['__world__']
+
+    def test_third_party_profile_api(self, app, publisher_group, third_party_user_with_token):
+        """Fetch a profile for a third-party account."""
+
+        user, token = third_party_user_with_token
+
+        headers = {'Authorization': str('Bearer {}'.format(token.value))}
+
+        res = app.get('/api/profile', headers=headers)
+
+        assert res.json['userid'] == user.userid
+
+        group_ids = [group['id'] for group in res.json['groups']]
+        assert group_ids == [publisher_group.pubid]
 
 
 @pytest.fixture
@@ -84,6 +112,34 @@ def user_with_token(user, db_session, factories):
     db_session.add(token)
     db_session.commit()
     return (user, token)
+
+
+@pytest.fixture
+def auth_client(db_session, factories):
+    auth_client = factories.AuthClient(authority='thirdparty.example.org')
+    db_session.commit()
+    return auth_client
+
+
+@pytest.fixture
+def third_party_user(auth_client, db_session, factories):
+    user = factories.User(authority=auth_client.authority)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def publisher_group(auth_client, db_session, factories):
+    group = factories.PublisherGroup(authority=auth_client.authority)
+    db_session.commit()
+    return group
+
+
+@pytest.fixture
+def third_party_user_with_token(third_party_user, db_session, factories):
+    token = factories.Token(userid=third_party_user.userid)
+    db_session.commit()
+    return (third_party_user, token)
 
 
 @pytest.fixture

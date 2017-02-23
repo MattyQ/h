@@ -9,21 +9,35 @@ def model(request):
     session = {}
     session['csrf'] = request.session.get_csrf_token()
     session['userid'] = request.authenticated_userid
-    session['groups'] = _current_groups(request)
+    session['groups'] = _current_groups(request, request.auth_domain)
     session['features'] = request.feature.all()
     session['preferences'] = _user_preferences(request.authenticated_user)
     return session
 
 
-def profile(request):
+def profile(request, authority=None):
     """
     Return a representation of the current user's information and settings.
+
+    If the request is unauthenticated (and so not tied to a particular
+    authority), the authority parameter can be used to override the authority
+    used to find public groups (by default, this is the `auth_domain` of the
+    request). This parameter is ignored for authenticated requests.
+
     """
+    user = request.authenticated_user
+
+    if user is not None:
+        authority = user.authority
+    else:
+        authority = authority or request.auth_domain
+
     profile = {}
     profile['userid'] = request.authenticated_userid
-    profile['groups'] = _current_groups(request)
+    profile['authority'] = authority
+    profile['groups'] = _current_groups(request, authority)
     profile['features'] = request.feature.all()
-    profile['preferences'] = _user_preferences(request.authenticated_user)
+    profile['preferences'] = _user_preferences(user)
     return profile
 
 
@@ -41,27 +55,41 @@ def _group_sort_key(group):
     return (group.name.lower(), group.pubid)
 
 
-def _current_groups(request):
+def _current_groups(request, authority):
     """Return a list of the groups the current user is a member of.
 
     This list is meant to be returned to the client in the "session" model.
 
     """
-    groups = [
-        {'name': 'Public', 'id': '__world__', 'public': True},
-    ]
+
     user = request.authenticated_user
+    authority_groups = (request.find_service(name='authority_group')
+                        .public_groups(authority=authority))
+
+    groups = authority_groups + _user_groups(user)
+
+    return [_group_model(request.route_url, group) for group in groups]
+
+
+def _user_groups(user):
     if user is None:
-        return groups
-    for group in sorted(user.groups, key=_group_sort_key):
-        groups.append({
-            'name': group.name,
-            'id': group.pubid,
-            'url': request.route_url('group_read',
-                                     pubid=group.pubid,
-                                     slug=group.slug),
-        })
-    return groups
+        return []
+    else:
+        return sorted(user.groups, key=_group_sort_key)
+
+
+def _group_model(route_url, group):
+    model = {'name': group.name, 'id': group.pubid, 'public': group.is_public}
+
+    # We currently want to show URLs for secret groups, but not for publisher
+    # groups, and not for the `__world__` group (where it doesn't make sense).
+    # This is currently all non-public groups, which saves us needing to do a
+    # check in here on the group's authority.
+    if not group.is_public:
+        model['url'] = route_url('group_read',
+                                 pubid=group.pubid,
+                                 slug=group.slug)
+    return model
 
 
 def _user_preferences(user):
