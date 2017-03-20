@@ -3,7 +3,7 @@
 
 from h import __version__
 from h import emails
-from memex import storage
+from h import storage
 from h.notification import reply
 from h.tasks import mailer
 
@@ -11,18 +11,22 @@ from h.tasks import mailer
 def add_renderer_globals(event):
     request = event['request']
 
-    event['h_version'] = __version__
     event['base_url'] = request.route_url('index')
     event['feature'] = request.feature
 
     # Add Google Analytics
-    ga_tracking_id = request.registry.settings.get('ga_tracking_id')
-    if ga_tracking_id is not None:
-        event['ga_tracking_id'] = ga_tracking_id
-        if 'localhost' in request.host:
-            event['ga_cookie_domain'] = "none"
-        else:
-            event['ga_cookie_domain'] = "auto"
+    event['ga_tracking_id'] = request.registry.settings.get('ga_tracking_id')
+
+    # Add a frontend settings object which will be rendered as JSON into the
+    # page.
+    event['frontend_settings'] = {}
+
+    if 'h.sentry_dsn_frontend' in request.registry.settings:
+        event['frontend_settings']['raven'] = {
+            'dsn': request.registry.settings['h.sentry_dsn_frontend'],
+            'release': __version__,
+            'userid': request.authenticated_userid,
+        }
 
 
 def publish_annotation_event(event):

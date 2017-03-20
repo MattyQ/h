@@ -11,7 +11,6 @@ import socket
 from pyramid.config import Configurator
 from pyramid.settings import asbool
 
-from h.security import derive_key
 from h.settings import DockerSetting
 from h.settings import EnvSetting
 from h.settings import SettingError
@@ -21,6 +20,13 @@ from h.settings import mandrill_settings
 __all__ = ('configure',)
 
 log = logging.getLogger(__name__)
+
+# The default salt used for secret derivation. This is a public value, and can
+# be overridden using the SECRET_SALT environment variable.
+DEFAULT_SALT = (b"\xbc\x9ck!k\x81(\xb6I\xaa\x90\x0f'}\x07\xa1P\xd9\xb7\xcb"
+                b"\xcb\xe8\x8b\t\xcf\xeb *\xa7\xa6\xe1i\xc7\x81\xe8\xd8\x18"
+                b"\x9f\x1b\x96\xc1\xfa\x8b\x19\x82\xa3[\x19\xcb\xa4\x1a\x0f"
+                b"\xe4\xcb\r\x17\x7f\xfbh\xd5^W\xdb\xe6")
 
 # The list of all settings read from the system environment. These are in
 # reverse-priority order, meaning that later settings trump earlier settings.
@@ -61,6 +67,7 @@ SETTINGS = [
 
     # Configuration for Pyramid
     EnvSetting('secret_key', 'SECRET_KEY', type=bytes),
+    EnvSetting('secret_salt', 'SECRET_SALT', type=bytes),
 
     # Configuration for h
     EnvSetting('csp.enabled', 'CSP_ENABLED', type=asbool),
@@ -74,11 +81,16 @@ SETTINGS = [
     EnvSetting('h.client_id', 'CLIENT_ID'),
     EnvSetting('h.client_secret', 'CLIENT_SECRET'),
     EnvSetting('h.client_url', 'CLIENT_URL'),
+    # Environment name, provided by the deployment environment. Please do
+    # *not* toggle functionality based on this value. It is intended as a
+    # label only.
+    EnvSetting('h.env', 'ENV'),
     EnvSetting('h.proxy_auth', 'PROXY_AUTH', type=asbool),
+    # Sentry DSNs for frontend code should be of the public kind, lacking the
+    # password component in the DSN URI.
+    EnvSetting('h.sentry_dsn_client', 'SENTRY_DSN_CLIENT'),
+    EnvSetting('h.sentry_dsn_frontend', 'SENTRY_DSN_FRONTEND'),
     EnvSetting('h.websocket_url', 'WEBSOCKET_URL'),
-    # The client Sentry DSN should be of the public kind, lacking the password
-    # component in the DSN URI.
-    EnvSetting('h.client.sentry_dsn', 'SENTRY_DSN_CLIENT'),
 
     # Debug/development settings
     EnvSetting('debug_query', 'DEBUG_QUERY'),
@@ -105,6 +117,10 @@ def configure(environ=None, settings=None):
                  'configure the secret_key setting or the SECRET_KEY '
                  'environment variable!')
         settings['secret_key'] = os.urandom(64)
+
+    # Use a fixed default salt if none provided
+    if 'secret_salt' not in settings:
+        settings['secret_salt'] = DEFAULT_SALT
 
     # Set up SQLAlchemy debug logging
     if 'debug_query' in settings:

@@ -4,6 +4,7 @@
 
 from __future__ import unicode_literals
 
+from h._compat import urlparse
 import logging
 
 import transaction
@@ -11,6 +12,7 @@ from pyramid.settings import asbool
 from pyramid.tweens import EXCVIEW
 
 from h.config import configure
+from h.views.client import DEFAULT_CLIENT_URL
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ def create_app(global_config, **settings):
 
 
 def includeme(config):
+    settings = config.registry.settings
+
     # We need to include `h.models` before pretty much everything else to
     # avoid the possibility that one of the imports below directly or
     # indirectly imports `memex.models`. See the comment at the top of
@@ -59,7 +63,7 @@ def includeme(config):
     config.add_tween('h.tweens.redirect_tween_factory')
     config.add_tween('h.tweens.csrf_tween_factory')
     config.add_tween('h.tweens.auth_token')
-    config.add_tween('h.tweens.content_security_policy_tween_factory')
+    config.add_tween('h.tweens.security_header_tween_factory')
 
     config.add_renderer('csv', 'h.renderers.CSV')
     config.add_request_method(in_debug_mode, 'debug', reify=True)
@@ -92,17 +96,16 @@ def includeme(config):
     })
     config.include('pyramid_tm')
 
-    # Enable a Content Security Policy
-    # This is initially copied from:
-    # https://github.com/pypa/warehouse/blob/e1cf03faf9bbaa15d67d0de2c70f9a9f732596aa/warehouse/config.py#L327
-    config.add_settings({
-        "csp": {
-            "font-src": ["'self'", "fonts.gstatic.com"],
-            "report-uri": [config.registry.settings.get("csp.report_uri")],
-            "script-src": ["'self'"],
-            "style-src": ["'self'", "fonts.googleapis.com"],
-        },
-    })
+    # Define the global default Content Security Policy
+    client_url = settings.get('h.client_url', DEFAULT_CLIENT_URL)
+    client_host = urlparse.urlparse(client_url).netloc
+    settings['csp'] = {
+        "font-src": ["'self'", "fonts.gstatic.com", client_host],
+        "script-src": ["'self'", client_host, "www.google-analytics.com"],
+        "style-src": ["'self'", "fonts.googleapis.com", client_host],
+    }
+    if 'csp.report_uri' in settings:
+        settings['csp']['report-uri'] = [settings['csp.report_uri']]
 
     # API module
     #
@@ -132,6 +135,7 @@ def includeme(config):
     config.include('h.session')
     config.include('h.stats')
     config.include('h.views')
+    config.include('h.viewderivers')
 
     # Site modules
     config.include('h.accounts')

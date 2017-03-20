@@ -110,6 +110,14 @@ class TestStreamUserRedirect(object):
 
         assert exc.value.location == 'http://example.com/user/bob'
 
+    def test_doesnt_choke_on_invalid_userids(self, pyramid_request):
+        pyramid_request.matchdict['user'] = 'acct:bob'
+
+        with pytest.raises(httpexceptions.HTTPFound) as exc:
+            main.stream_user_redirect(pyramid_request)
+
+        assert exc.value.location == 'http://example.com/user/acct%3Abob'
+
     @pytest.fixture
     def routes(self, pyramid_config):
         pyramid_config.add_route('activity.search', '/search')
@@ -139,17 +147,9 @@ def document_title(patch):
 
 
 @pytest.fixture
-def pyramid_config(pyramid_config):
-    # Pretend the client assets environment has been configured
-    pyramid_config.registry['assets_client_env'] = mock.Mock()
-    return pyramid_config
-
-
-@pytest.fixture
 def routes(pyramid_config):
     pyramid_config.add_route('api.annotation', '/api/ann/{id}')
     pyramid_config.add_route('api.index', '/api/index')
-    pyramid_config.add_route('assets_client', '/assets/client')
     pyramid_config.add_route('index', '/index')
 
 

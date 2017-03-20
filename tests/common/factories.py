@@ -87,10 +87,6 @@ class User(ModelFactory):
     email = factory.Faker('email')
     registered_date = factory.Faker('date_time_this_decade')
 
-    @factory.lazy_attribute
-    def uid(self):
-        return self.username.replace('.', '').lower()
-
 
 class Group(ModelFactory):
 
@@ -147,3 +143,13 @@ class Setting(ModelFactory):
 
     key = factory.LazyAttribute(lambda _: FAKER.domain_word())
     value = factory.LazyAttribute(lambda _: FAKER.catch_phrase())
+
+
+class Flag(ModelFactory):
+
+    class Meta:  # pylint: disable=no-init, old-style-class
+        model = models.Flag
+        force_flush = True
+
+    user = factory.SubFactory(User)
+    annotation = factory.SubFactory(Annotation)

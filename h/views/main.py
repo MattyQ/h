@@ -22,7 +22,8 @@ log = logging.getLogger(__name__)
 
 @view_config(route_name='annotation',
              permission='read',
-             renderer='h:templates/app.html.jinja2')
+             renderer='h:templates/app.html.jinja2',
+             csp_insecure_optout=True)
 def annotation_page(context, request):
     annotation = context.annotation
     document = annotation.document
@@ -59,7 +60,8 @@ def robots(context, request):
 
 
 @view_config(route_name='stream',
-             renderer='h:templates/app.html.jinja2')
+             renderer='h:templates/app.html.jinja2',
+             csp_insecure_optout=True)
 def stream(context, request):
     q = request.params.get('q', '').split(':', 1)
     if len(q) >= 2 and q[0] == 'tag':
@@ -96,7 +98,12 @@ def stream_user_redirect(request):
 
     # The client generates /u/ links which include the full account ID
     if user.startswith('acct:'):
-        user = split_user(user)['username']
+        try:
+            user = split_user(user)['username']
+        except ValueError:
+            # If it's not a valid userid, catch the exception and just treat
+            # the parameter as a literal username.
+            pass
 
     location = request.route_url('activity.user_search', username=user)
 
