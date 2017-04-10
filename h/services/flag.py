@@ -2,10 +2,7 @@
 
 from __future__ import unicode_literals
 
-from memex import uri
-
 from h import models
-from h import storage
 
 
 class FlagService(object):
@@ -27,6 +24,30 @@ class FlagService(object):
         """
         query = self.session.query(models.Flag).filter_by(user=user, annotation=annotation)
         return query.count() > 0
+
+    def all_flagged(self, user, annotation_ids):
+        """
+        Check which of the given annotation IDs the given user has flagged.
+
+        :param user: The user to check for a flag.
+        :type user: h.models.User
+
+        :param annotation_ids: The IDs of the annotations to check.
+        :type annotation_ids: sequence of unicode
+
+        :returns The subset of the IDs that the given user has flagged.
+        :rtype set of unicode
+        """
+        # SQLAlchemy doesn't behave in the way we might expect when handed an
+        # `in_` condition with an empty sequence
+        if not annotation_ids:
+            return set()
+
+        query = self.session.query(models.Flag.annotation_id) \
+                            .filter(models.Flag.annotation_id.in_(annotation_ids),
+                                    models.Flag.user == user)
+
+        return set([f.annotation_id for f in query])
 
     def create(self, user, annotation):
         """
@@ -52,45 +73,6 @@ class FlagService(object):
         flag = models.Flag(user=user,
                            annotation=annotation)
         self.session.add(flag)
-
-    def list(self, user, group=None, uris=None):
-        """
-        Return a list of flags made by the given user.
-
-        :param user: The user to filter flags on.
-        :type user: h.models.User
-
-        :param group: The annotation group pubid for filtering flags.
-        :type group: unicode
-
-        :param uris: A list of annotation uris for filtering flags.
-        :type uris: list of unicode
-
-        :returns: list of flags (``h.models.Flag``)
-        :rtype: list
-        """
-
-        query = self.session.query(models.Flag).filter_by(user=user)
-
-        joined_annotation = False
-
-        if group is not None:
-            joined_annotation = True
-            query = query.join(models.Annotation) \
-                         .filter(models.Annotation.groupid == group)
-
-        if uris:
-            query_uris = set()
-            for u in uris:
-                expanded = storage.expand_uri(self.session, u)
-                query_uris.update([uri.normalize(e) for e in expanded])
-
-            if not joined_annotation:
-                joined_annotation = True
-                query = query.join(models.Annotation)
-            query = query.filter(models.Annotation.target_uri_normalized.in_(query_uris))
-
-        return query
 
 
 def flag_service_factory(context, request):

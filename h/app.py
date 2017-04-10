@@ -41,23 +41,14 @@ def create_app(global_config, **settings):
 def includeme(config):
     settings = config.registry.settings
 
-    # We need to include `h.models` before pretty much everything else to
-    # avoid the possibility that one of the imports below directly or
-    # indirectly imports `memex.models`. See the comment at the top of
-    # `h.models` for details.
-    #
-    # FIXME: h modules should not access `memex.models`, even indirectly,
-    # except through `h.models`.
-    config.include('h.models')
-
     config.set_root_factory('h.resources:Root')
 
     config.add_subscriber('h.subscribers.add_renderer_globals',
                           'pyramid.events.BeforeRender')
     config.add_subscriber('h.subscribers.publish_annotation_event',
-                          'memex.events.AnnotationEvent')
+                          'h.events.AnnotationEvent')
     config.add_subscriber('h.subscribers.send_reply_notifications',
-                          'memex.events.AnnotationEvent')
+                          'h.events.AnnotationEvent')
 
     config.add_tween('h.tweens.conditional_http_tween_factory', under=EXCVIEW)
     config.add_tween('h.tweens.redirect_tween_factory')
@@ -102,34 +93,28 @@ def includeme(config):
     settings['csp'] = {
         "font-src": ["'self'", "fonts.gstatic.com", client_host],
         "script-src": ["'self'", client_host, "www.google-analytics.com"],
-        "style-src": ["'self'", "fonts.googleapis.com", client_host],
+
+        # Allow inline styles until https://github.com/hypothesis/client/issues/293
+        # is resolved as otherwise our own tool would break on the site,
+        # including on /docs/help.
+        "style-src": ["'self'", "fonts.googleapis.com", client_host,
+                      "'unsafe-inline'"],
     }
     if 'csp.report_uri' in settings:
         settings['csp']['report-uri'] = [settings['csp.report_uri']]
-
-    # API module
-    #
-    # We include this first so that:
-    # - configuration directives provided by modules in `memex` are available
-    #   to the rest of the application at startup.
-    # - we can override behaviour from `memex` if necessary.
-    config.include('memex', route_prefix='/api')
-
-    # Override memex group service
-    config.register_service_factory('h.services.groupfinder.groupfinder_service_factory',
-                                    iface='memex.interfaces.IGroupService')
 
     # Core site modules
     config.include('h.assets')
     config.include('h.auth')
     config.include('h.authz')
     config.include('h.db')
-    config.include('h.features')
+    config.include('h.eventqueue')
     config.include('h.form')
     config.include('h.indexer')
     config.include('h.panels')
     config.include('h.realtime')
     config.include('h.routes')
+    config.include('h.search')
     config.include('h.sentry')
     config.include('h.services')
     config.include('h.session')
@@ -139,7 +124,6 @@ def includeme(config):
 
     # Site modules
     config.include('h.accounts')
-    config.include('h.admin')
     config.include('h.groups')
     config.include('h.links')
     config.include('h.nipsa')

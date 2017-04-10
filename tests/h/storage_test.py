@@ -7,11 +7,11 @@ import copy
 import pytest
 import mock
 
-from memex import schemas
-from memex.models.annotation import Annotation
-from memex.models.document import Document, DocumentURI
+from h.models.annotation import Annotation
+from h.models.document import Document, DocumentURI
 
 from h import storage
+from h.schemas import ValidationError
 
 
 class FakeGroup(object):
@@ -87,7 +87,7 @@ class TestExpandURI(object):
         ]
 
 
-@pytest.mark.usefixtures('models', 'group_service')
+@pytest.mark.usefixtures('models', 'group_service', 'update_document_metadata')
 class TestCreateAnnotation(object):
 
     def test_it_fetches_parent_annotation_for_replies(self,
@@ -147,7 +147,7 @@ class TestCreateAnnotation(object):
         # The annotation is a reply.
         data['references'] = ['parent_annotation_id']
 
-        with pytest.raises(schemas.ValidationError) as exc:
+        with pytest.raises(ValidationError) as exc:
             storage.create_annotation(pyramid_request, data, group_service)
 
         assert str(exc.value).startswith('references.0: ')
@@ -179,7 +179,7 @@ class TestCreateAnnotation(object):
         data = self.annotation_data()
         data['groupid'] = 'foo-group'
 
-        with pytest.raises(schemas.ValidationError) as exc:
+        with pytest.raises(ValidationError) as exc:
             storage.create_annotation(pyramid_request, data, group_service)
 
         assert str(exc.value).startswith('group: ')
@@ -191,7 +191,7 @@ class TestCreateAnnotation(object):
         data = self.annotation_data()
         data['groupid'] = 'missing-group'
 
-        with pytest.raises(schemas.ValidationError) as exc:
+        with pytest.raises(ValidationError) as exc:
             storage.create_annotation(pyramid_request, data, group_service)
 
         assert str(exc.value).startswith('group: ')
@@ -213,7 +213,8 @@ class TestCreateAnnotation(object):
                                                                   models,
                                                                   pyramid_request,
                                                                   datetime,
-                                                                  group_service):
+                                                                  group_service,
+                                                                  update_document_metadata):
         annotation_data = self.annotation_data()
         annotation_data['document']['document_meta_dicts'] = (
             mock.sentinel.document_meta_dicts)
@@ -222,7 +223,7 @@ class TestCreateAnnotation(object):
 
         storage.create_annotation(pyramid_request, annotation_data, group_service)
 
-        models.update_document_metadata.assert_called_once_with(
+        update_document_metadata.assert_called_once_with(
             pyramid_request.db,
             models.Annotation.return_value.target_uri,
             mock.sentinel.document_meta_dicts,
@@ -234,11 +235,12 @@ class TestCreateAnnotation(object):
     def test_it_sets_the_annotations_document_id(self,
                                                  models,
                                                  pyramid_request,
-                                                 group_service):
+                                                 group_service,
+                                                 update_document_metadata):
         annotation_data = self.annotation_data()
 
         document = mock.Mock()
-        models.update_document_metadata.return_value = document
+        update_document_metadata.return_value = document
 
         ann = storage.create_annotation(pyramid_request, annotation_data, group_service)
 
@@ -268,7 +270,7 @@ class TestCreateAnnotation(object):
     @pytest.fixture
     def group_service(self, pyramid_config):
         group_service = mock.Mock(spec_set=['find'])
-        pyramid_config.register_service(group_service, iface='memex.interfaces.IGroupService')
+        pyramid_config.register_service(group_service, iface='h.interfaces.IGroupService')
         return group_service
 
     def annotation_data(self):
@@ -288,7 +290,7 @@ class TestCreateAnnotation(object):
         }
 
 
-@pytest.mark.usefixtures('models')
+@pytest.mark.usefixtures('models', 'update_document_metadata')
 class TestUpdateAnnotation(object):
 
     def test_it_gets_the_annotation_model(self,
@@ -377,8 +379,8 @@ class TestUpdateAnnotation(object):
             self,
             annotation_data,
             session,
-            models,
-            datetime):
+            datetime,
+            update_document_metadata):
         annotation = session.query.return_value.get.return_value
         annotation_data['document']['document_meta_dicts'] = (
             mock.sentinel.document_meta_dicts)
@@ -389,7 +391,7 @@ class TestUpdateAnnotation(object):
                                   'test_annotation_id',
                                   annotation_data)
 
-        models.update_document_metadata.assert_called_once_with(
+        update_document_metadata.assert_called_once_with(
             session,
             annotation.target_uri,
             mock.sentinel.document_meta_dicts,
@@ -400,10 +402,10 @@ class TestUpdateAnnotation(object):
     def test_it_updates_the_annotations_document_id(self,
                                                     annotation_data,
                                                     session,
-                                                    models):
+                                                    update_document_metadata):
         annotation = session.query.return_value.get.return_value
         document = mock.Mock()
-        models.update_document_metadata.return_value = document
+        update_document_metadata.return_value = document
 
         storage.update_annotation(session,
                                   'test_annotation_id',
@@ -424,11 +426,11 @@ class TestUpdateAnnotation(object):
     def test_it_does_not_call_update_document_meta_if_no_document_in_data(
             self,
             session,
-            models):
+            update_document_metadata):
 
         storage.update_annotation(session, 'test_annotation_id', {})
 
-        assert not models.update_document_metadata.called
+        assert not update_document_metadata.called
 
     @pytest.fixture
     def annotation_data(self):
@@ -476,6 +478,11 @@ def models(patch):
     models = patch('h.storage.models', autospec=False)
     models.Annotation.return_value.is_reply = False
     return models
+
+
+@pytest.fixture
+def update_document_metadata(patch):
+    return patch('h.storage.update_document_metadata')
 
 
 @pytest.fixture

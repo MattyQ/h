@@ -20,7 +20,6 @@ from sqlalchemy.orm import sessionmaker
 from webob.multidict import MultiDict
 
 from h import db
-from h import models  # noqa: ensure base class set for memex
 from h import form
 from h.settings import database_url
 from h._compat import text_type
@@ -225,7 +224,7 @@ def pyramid_config(pyramid_settings, pyramid_request):
 def pyramid_request(db_session, fake_feature, pyramid_settings):
     """Dummy Pyramid request object."""
     request = testing.DummyRequest(db=db_session, feature=fake_feature)
-    request.auth_domain = text_type(request.domain)
+    request.authority = text_type(request.domain)
     request.create_form = mock.Mock()
     request.matched_route = mock.Mock()
     request.registry.settings = pyramid_settings

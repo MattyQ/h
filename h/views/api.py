@@ -14,22 +14,20 @@ It is worth noting up front that in general, authorization for requests made to
 each endpoint is handled outside of the body of the view functions. In
 particular, requests to the CRUD API endpoints are protected by the Pyramid
 authorization system. You can find the mapping between annotation "permissions"
-objects and Pyramid ACLs in :mod:`memex.resources`.
+objects and Pyramid ACLs in :mod:`h.resources`.
 """
 from pyramid import i18n
 from pyramid import security
-from sqlalchemy.orm import subqueryload
 import venusian
 
-from memex import models
-from memex.events import AnnotationEvent
-from memex.interfaces import IGroupService
-from memex.resources import AnnotationResource
-from memex import search as search_lib
-from memex import schemas
-
+from h import search as search_lib
 from h import storage
+from h.events import AnnotationEvent
+from h.interfaces import IGroupService
 from h.presenters import AnnotationJSONPresenter, AnnotationJSONLDPresenter
+from h.resources import AnnotationResource
+from h.schemas import ValidationError
+from h.schemas.annotation import CreateAnnotationSchema, UpdateAnnotationSchema
 from h.util import cors
 
 _ = i18n.TranslationStringFactory(__package__)
@@ -146,7 +144,7 @@ def error_api(context, request):
     return {'status': 'failure', 'reason': context.message}
 
 
-@api_config(context=schemas.ValidationError)
+@api_config(context=ValidationError)
 def error_validation(context, request):
     request.response.status_code = 400
     return {'status': 'failure', 'reason': context.message}
@@ -194,13 +192,15 @@ def search(request):
                                separate_replies=separate_replies,
                                stats=stats).run(params)
 
+    svc = request.find_service(name='annotation_json_presentation')
+
     out = {
         'total': result.total,
-        'rows': _present_annotations(request, result.annotation_ids)
+        'rows': svc.present_all(result.annotation_ids)
     }
 
     if separate_replies:
-        out['replies'] = _present_annotations(request, result.reply_ids)
+        out['replies'] = svc.present_all(result.reply_ids)
 
     return out
 
@@ -212,7 +212,7 @@ def search(request):
             description='Create an annotation')
 def create(request):
     """Create an annotation from the POST payload."""
-    schema = schemas.CreateAnnotationSchema(request)
+    schema = CreateAnnotationSchema(request)
     appstruct = schema.validate(_json_payload(request))
     group_service = request.find_service(IGroupService)
     annotation = storage.create_annotation(request, appstruct, group_service)
@@ -233,8 +233,8 @@ def create(request):
             description='Fetch an annotation')
 def read(context, request):
     """Return the annotation (simply how it was stored in the database)."""
-    presenter = AnnotationJSONPresenter(context)
-    return presenter.asdict()
+    svc = request.find_service(name='annotation_json_presentation')
+    return svc.present(context)
 
 
 @api_config(route_name='api.annotation.jsonld',
@@ -258,9 +258,9 @@ def update(context, request):
     if request.method == 'PUT' and hasattr(request, 'stats'):
         request.stats.incr('memex.api.deprecated.put_update_annotation')
 
-    schema = schemas.UpdateAnnotationSchema(request,
-                                            context.annotation.target_uri,
-                                            context.annotation.groupid)
+    schema = UpdateAnnotationSchema(request,
+                                    context.annotation.target_uri,
+                                    context.annotation.groupid)
     appstruct = schema.validate(_json_payload(request))
 
     annotation = storage.update_annotation(request.db,
@@ -308,21 +308,6 @@ def _json_payload(request):
         return request.json_body
     except ValueError:
         raise PayloadError()
-
-
-def _present_annotations(request, ids):
-    """Load annotations by id from the database and present them."""
-    def eager_load_documents(query):
-        return query.options(
-            subqueryload(models.Annotation.document))
-
-    annotations = storage.fetch_ordered_annotations(request.db, ids,
-                                                    query_processor=eager_load_documents)
-    group_service = request.find_service(IGroupService)
-    links_service = request.find_service(name='links')
-    return [AnnotationJSONPresenter(
-                AnnotationResource(ann, group_service, links_service)).asdict()
-            for ann in annotations]
 
 
 def _publish_annotation_event(request,

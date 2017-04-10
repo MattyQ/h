@@ -6,7 +6,6 @@ import pytest
 
 from h.services import flag
 from h import models
-from h._compat import text_type, xrange
 
 
 @pytest.mark.usefixtures('flags')
@@ -23,9 +22,26 @@ class TestFlagServiceFlagged(object):
 
         assert svc.flagged(user, annotation) is False
 
+    def test_it_lists_flagged_ids(self, svc, flags):
+        user = flags[-1].user
+
+        all_flagged = svc.all_flagged(user, [f.annotation_id for f in flags])
+
+        assert all_flagged == set([flags[-1].annotation_id])
+
+    @pytest.mark.usefixtures('flags')
+    def test_it_handles_all_flagged_with_no_ids(self, svc, factories):
+        user = factories.User()
+        assert svc.all_flagged(user, []) == set()
+
+    def test_it_handles_all_flagged_with_no_user(self, svc, flags):
+        annotation_ids = [f.annotation_id for f in flags]
+
+        assert svc.all_flagged(None, annotation_ids) == set()
+
     @pytest.fixture
     def flags(self, factories):
-        return [factories.Flag() for _ in xrange(3)]
+        return factories.Flag.create_batch(3)
 
 
 class TestFlagServiceCreate(object):
@@ -51,56 +67,6 @@ class TestFlagServiceCreate(object):
                          .filter_by(user_id=existing.user.id,
                                     annotation_id=existing.annotation.id) \
                          .count() == 1
-
-
-@pytest.mark.usefixtures('flags')
-class TestFlagServiceList(object):
-    def test_it_filters_by_user(self, svc, users, flags):
-        expected = {f for k, f in flags.iteritems() if k.startswith('alice-')}
-        assert set(svc.list(users['alice'])) == expected
-
-    def test_it_optionally_filters_by_group(self, svc, users, flags, groups):
-        expected = [flags['alice-politics']]
-        result = svc.list(users['alice'], group=groups['politics']).all()
-        assert result == expected
-
-    def test_it_optionally_filters_by_uri(self, svc, users, flags):
-        expected = [flags['alice-climate']]
-        result = svc.list(users['alice'], uris=['https://science.org']).all()
-        assert result == expected
-
-    def test_it_supports_multiple_uri_filters(self, svc, users, flags):
-        expected = [flags['alice-climate'], flags['alice-politics']]
-        result = svc.list(users['alice'], uris=['https://science.org', 'https://news.com']).all()
-        assert result == expected
-
-    @pytest.fixture
-    def users(self, factories):
-        return {'alice': factories.User(username='alice'),
-                'bob': factories.User(username='bob')}
-
-    @pytest.fixture
-    def groups(self, factories):
-        return {'climate': text_type(factories.Group(name='Climate').pubid),
-                'politics': text_type(factories.Group(name='Politics').pubid)}
-
-    @pytest.fixture
-    def flags(self, factories, users, groups, db_session):
-        ann_climate = factories.Annotation(groupid=groups['climate'],
-                                           target_uri='https://science.com')
-        factories.DocumentURI(claimant='https://science.org',
-                              uri='https://science.org',
-                              type='rel-alternate',
-                              document=ann_climate.document)
-
-        ann_politics = factories.Annotation(groupid=groups['politics'],
-                                            target_uri='https://news.com')
-
-        return {
-            'alice-climate': factories.Flag(user=users['alice'], annotation=ann_climate),
-            'alice-politics': factories.Flag(user=users['alice'], annotation=ann_politics),
-            'bob-politics': factories.Flag(user=users['bob'], annotation=ann_politics),
-        }
 
 
 class TestFlagServiceFactory(object):

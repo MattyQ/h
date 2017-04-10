@@ -43,7 +43,6 @@ from gunicorn.workers.ggevent import (GeventPyWSGIWorker, PyWSGIHandler,
                                       PyWSGIServer)
 from ws4py import format_addresses
 
-from h import features
 from h.config import configure
 
 log = logging.getLogger(__name__)
@@ -148,9 +147,6 @@ class Worker(GeventPyWSGIWorker):
 
 def create_app(global_config, **settings):
     config = configure(settings=settings)
-
-    config.add_request_method(features.Client, name='feature', reify=True)
-
     config.include('pyramid_services')
 
     config.include('h.auth')
@@ -158,29 +154,16 @@ def create_app(global_config, **settings):
     config.set_authentication_policy('h.auth.WEBSOCKET_POLICY')
 
     config.include('h.authz')
-    config.include('h.session')
-    config.include('h.sentry')
-    config.include('h.stats')
-
-    # We have to include models and db to set up sqlalchemy metadata.
-    config.include('h.models')
     config.include('h.db')
-
-    # We have to include parts of the `memex` package in order to provide,
-    # among other things:
-    #
-    #   - the links service
-    #   - the default presenters (and their link registrations)
-    #   - the `request.es` property
-    config.include('memex.links')
-    config.include('memex.search')
+    config.include('h.session')
+    config.include('h.search')
+    config.include('h.sentry')
+    config.include('h.services')
+    config.include('h.stats')
 
     # We include links in order to set up the alternative link registrations
     # for annotations.
     config.include('h.links')
-
-    # Access to services
-    config.include('h.services')
 
     # And finally we add routes. Static routes are not resolvable by HTTP
     # clients, but can be used for URL generation within the websocket server.
@@ -191,4 +174,3 @@ def create_app(global_config, **settings):
     config.include('h.streamer')
 
     return config.make_wsgi_app()
-

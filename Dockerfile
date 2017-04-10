@@ -6,6 +6,7 @@ RUN apk-install \
     ca-certificates \
     collectd \
     collectd-nginx \
+    gettext \
     libffi \
     libpq \
     nginx \
@@ -22,8 +23,7 @@ WORKDIR /var/lib/hypothesis
 RUN chown -R hypothesis:hypothesis /var/log/nginx /var/lib/nginx
 
 # Copy minimal data to allow installation of dependencies.
-COPY src/memex/__init__.py ./src/memex/
-COPY README.rst setup.* requirements.txt ./
+COPY requirements.txt ./
 
 # Install build deps, build, and then clean up.
 RUN apk-install --virtual build-deps \
@@ -47,6 +47,9 @@ RUN mkdir /etc/collectd/collectd.conf.d \
 
 # Copy the rest of the application files.
 COPY . .
+
+# If we're building from a git clone, ensure that .git is writeable
+RUN [ -d .git ] && chown -R hypothesis:hypothesis .git || :
 
 # Build frontend assets
 RUN npm install --production \

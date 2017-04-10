@@ -4,13 +4,6 @@ from __future__ import unicode_literals
 
 from collections import namedtuple
 
-from memex.search import Search
-from memex.search import parser
-from memex.search.query import (
-    TagsAggregation,
-    TopLevelAnnotationsFilter,
-    UsersAggregation,
-)
 import newrelic.agent
 from pyramid.httpexceptions import HTTPFound
 from sqlalchemy.orm import subqueryload
@@ -20,6 +13,13 @@ from h import presenters
 from h import storage
 from h.activity import bucketing
 from h.models import Annotation, Document, Group
+from h.search import Search
+from h.search import parser
+from h.search.query import (
+    TagsAggregation,
+    TopLevelAnnotationsFilter,
+    UsersAggregation,
+)
 
 
 class ActivityResults(namedtuple('ActivityResults', [
@@ -36,7 +36,7 @@ def extract(request, parse=parser.parse):
     Extract and process the query present in the passed request.
 
     Assumes that the 'q' query parameter contains a string query in a format
-    which can be parsed by :py:func:`memex.search.parser.parse`. Extracts and
+    which can be parsed by :py:func:`h.search.parser.parse`. Extracts and
     parses the query, adds terms implied by the current matched route, if
     necessary, and returns it.
 
@@ -92,7 +92,7 @@ def check_url(request, query, unparse=parser.unparse):
     elif _single_entry(query, 'user'):
         username = query.pop('user')
         user = request.find_service(name='user').fetch(username,
-                                                       request.auth_domain)
+                                                       request.authority)
         if user:
             redirect = request.route_path('activity.user_search',
                                           username=username,

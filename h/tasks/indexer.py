@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-from h import storage
-from h.celery import celery
+from h import models, storage
+from h.celery import celery, get_task_logger
 from h.indexer.reindexer import SETTING_NEW_INDEX
+from h.search.index import BatchIndexer, delete, index
 
-from memex.search.index import index
-from memex.search.index import delete
+log = get_task_logger(__name__)
 
 
 @celery.task
@@ -31,6 +31,16 @@ def delete_annotation(id_):
     future_index = _current_reindex_new_name(celery.request)
     if future_index is not None:
         delete(celery.request.es, id_, target_index=future_index)
+
+
+@celery.task
+def reindex_user_annotations(userid):
+    ids = [a.id for a in celery.request.db.query(models.Annotation.id).filter_by(userid=userid)]
+
+    indexer = BatchIndexer(celery.request.db, celery.request.es, celery.request)
+    errored = indexer.index(ids)
+    if errored:
+        log.warning('Failed to re-index annotations %s', errored)
 
 
 def _current_reindex_new_name(request):

@@ -4,31 +4,24 @@ import logging
 
 import colander
 import deform
-from pyramid.session import check_csrf_token
 from itsdangerous import BadData, SignatureExpired
 
 from h import i18n, models, validators
 from h.accounts import util
-from h.services.user import UserNotActivated, UserNotKnown
+from h.services.user import UserNotActivated
 from h.models.user import (
     EMAIL_MAX_LENGTH,
-    PASSWORD_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH,
     USERNAME_PATTERN,
 )
-from h.schemas import JSONSchema
+from h.schemas.base import CSRFSchema, JSONSchema
 
 _ = i18n.TranslationString
 log = logging.getLogger(__name__)
 
+PASSWORD_MIN_LENGTH = 2  # FIXME: this is ridiculous
 USERNAME_BLACKLIST = None
-
-
-@colander.deferred
-def deferred_csrf_token(node, kw):
-    request = kw.get('request')
-    return request.session.get_csrf_token()
 
 
 def get_blacklist():
@@ -50,7 +43,7 @@ def get_blacklist():
 def unique_email(node, value):
     '''Colander validator that ensures no user with this email exists.'''
     request = node.bindings['request']
-    user = models.User.get_by_email(request.db, value, request.auth_domain)
+    user = models.User.get_by_email(request.db, value, request.authority)
     if user and user.userid != request.authenticated_userid:
         msg = _("Sorry, an account with this email address already exists.")
         raise colander.Invalid(node, msg)
@@ -59,7 +52,7 @@ def unique_email(node, value):
 def unique_username(node, value):
     '''Colander validator that ensures the username does not exist.'''
     request = node.bindings['request']
-    user = models.User.get_by_username(request.db, value, request.auth_domain)
+    user = models.User.get_by_username(request.db, value, request.authority)
     if user:
         msg = _("This username is already taken.")
         raise colander.Invalid(node, msg)
@@ -107,24 +100,6 @@ def new_password_node(**kwargs):
         **kwargs)
 
 
-class CSRFSchema(colander.Schema):
-    """
-    A CSRFSchema backward-compatible with the one from the hem module.
-
-    Unlike hem, this doesn't require that the csrf_token appear in the
-    serialized appstruct.
-    """
-
-    csrf_token = colander.SchemaNode(colander.String(),
-                                     widget=deform.widget.HiddenWidget(),
-                                     default=deferred_csrf_token,
-                                     missing=None)
-
-    def validator(self, form, value):
-        request = form.bindings['request']
-        check_csrf_token(request)
-
-
 class LoginSchema(CSRFSchema):
     username = colander.SchemaNode(
         colander.String(),
@@ -145,14 +120,10 @@ class LoginSchema(CSRFSchema):
         password = value.get('password')
 
         user_service = request.find_service(name='user')
+        user_password_service = request.find_service(name='user_password')
 
         try:
-            user = user_service.login(username_or_email=username,
-                                      password=password)
-        except UserNotKnown:
-            err = colander.Invalid(node)
-            err['username'] = _('User does not exist.')
-            raise err
+            user = user_service.fetch_for_login(username_or_email=username)
         except UserNotActivated:
             err = colander.Invalid(node)
             err['username'] = _("If your account did not activate, "
@@ -160,6 +131,11 @@ class LoginSchema(CSRFSchema):
             raise err
 
         if user is None:
+            err = colander.Invalid(node)
+            err['username'] = _('User does not exist.')
+            raise err
+
+        if not user_password_service.check_password(user, password):
             err = colander.Invalid(node)
             err['password'] = _('Wrong password.')
             raise err
@@ -181,7 +157,7 @@ class ForgotPasswordSchema(CSRFSchema):
 
         request = node.bindings['request']
         email = value.get('email')
-        user = models.User.get_by_email(request.db, email, request.auth_domain)
+        user = models.User.get_by_email(request.db, email, request.authority)
 
         if user is None:
             err = colander.Invalid(node)
@@ -245,7 +221,7 @@ class ResetCode(colander.SchemaType):
         except BadData:
             raise colander.Invalid(node, _('Wrong reset code.'))
 
-        user = models.User.get_by_username(request.db, username, request.auth_domain)
+        user = models.User.get_by_username(request.db, username, request.authority)
         if user is None:
             raise colander.Invalid(node, _('Your reset code is not valid'))
         if user.password_updated is not None and timestamp < user.password_updated:
@@ -277,9 +253,10 @@ class EmailChangeSchema(CSRFSchema):
         super(EmailChangeSchema, self).validator(node, value)
         exc = colander.Invalid(node)
         request = node.bindings['request']
-        user = request.authenticated_user
+        svc = request.find_service(name='user_password')
+        user = request.user
 
-        if not user.check_password(value.get('password')):
+        if not svc.check_password(user, value.get('password')):
             exc['password'] = _('Wrong password.')
 
         if exc.children:
@@ -303,12 +280,13 @@ class PasswordChangeSchema(CSRFSchema):
         super(PasswordChangeSchema, self).validator(node, value)
         exc = colander.Invalid(node)
         request = node.bindings['request']
-        user = request.authenticated_user
+        svc = request.find_service(name='user_password')
+        user = request.user
 
         if value.get('new_password') != value.get('new_password_confirm'):
             exc['new_password_confirm'] = _('The passwords must match')
 
-        if not user.check_password(value.get('password')):
+        if not svc.check_password(user, value.get('password')):
             exc['password'] = _('Wrong password.')
 
         if exc.children:

@@ -3,14 +3,11 @@
 import mock
 import pytest
 
-from pyramid.config import Configurator
 from pyramid import testing
+from pyramid.config import Configurator
 
-from memex.resources import AnnotationResource
-from memex.schemas import ValidationError
-from memex.search.core import SearchResult
-
-from h import presenters
+from h.schemas import ValidationError
+from h.search.core import SearchResult
 from h.views import api as views
 
 
@@ -150,7 +147,7 @@ class TestIndex(object):
         assert links['search']['url'] == host + '/dummy/search'
 
 
-@pytest.mark.usefixtures('group_service', 'links_service', 'search_lib')
+@pytest.mark.usefixtures('presentation_service', 'search_lib')
 class TestSearch(object):
 
     def test_it_searches(self, pyramid_request, search_lib):
@@ -164,57 +161,39 @@ class TestSearch(object):
                                              stats=pyramid_request.stats)
         search.run.assert_called_once_with(pyramid_request.params)
 
-    def test_it_loads_annotations_from_database(self, pyramid_request, search_run, storage):
+    def test_it_presents_search_results(self, pyramid_request, search_run, presentation_service):
         search_run.return_value = SearchResult(2, ['row-1', 'row-2'], [], {})
 
         views.search(pyramid_request)
 
-        storage.fetch_ordered_annotations.assert_called_once_with(
-            pyramid_request.db, ['row-1', 'row-2'], query_processor=mock.ANY)
+        presentation_service.present_all.assert_called_once_with(['row-1', 'row-2'])
 
-    def test_it_renders_search_results(self, links_service, pyramid_request, search_run, factories, group_service):
-        ann1 = AnnotationResource(factories.Annotation(userid='luke'), group_service, links_service)
-        ann2 = AnnotationResource(factories.Annotation(userid='sarah'), group_service, links_service)
-
-        search_run.return_value = SearchResult(2, [ann1.annotation.id, ann2.annotation.id], [], {})
+    def test_it_returns_search_results(self, pyramid_request, search_run, presentation_service):
+        search_run.return_value = SearchResult(2, ['row-1', 'row-2'], [], {})
 
         expected = {
             'total': 2,
-            'rows': [
-                presenters.AnnotationJSONPresenter(ann1).asdict(),
-                presenters.AnnotationJSONPresenter(ann2).asdict(),
-            ]
+            'rows': presentation_service.present_all.return_value
         }
 
         assert views.search(pyramid_request) == expected
 
-    def test_it_loads_replies_from_database(self, pyramid_request, search_run, storage):
+    def test_it_presents_replies(self, pyramid_request, search_run, presentation_service):
         pyramid_request.params = {'_separate_replies': '1'}
         search_run.return_value = SearchResult(1, ['row-1'], ['reply-1', 'reply-2'], {})
 
         views.search(pyramid_request)
 
-        assert mock.call(pyramid_request.db, ['reply-1', 'reply-2'],
-                         query_processor=mock.ANY) in storage.fetch_ordered_annotations.call_args_list
+        presentation_service.present_all.assert_called_with(['reply-1', 'reply-2'])
 
-    def test_it_renders_replies(self, links_service, pyramid_request, search_run, factories, group_service):
-        ann = AnnotationResource(factories.Annotation(userid='luke'), group_service, links_service)
-        reply1 = AnnotationResource(factories.Annotation(userid='sarah', references=[ann.annotation.id]), group_service, links_service)
-        reply2 = AnnotationResource(factories.Annotation(userid='sarah', references=[ann.annotation.id]), group_service, links_service)
-
-        search_run.return_value = SearchResult(1,
-                                               [ann.annotation.id],
-                                               [reply1.annotation.id, reply2.annotation.id], {})
-
+    def test_it_returns_replies(self, pyramid_request, search_run, presentation_service):
         pyramid_request.params = {'_separate_replies': '1'}
+        search_run.return_value = SearchResult(1, ['row-1'], ['reply-1', 'reply-2'], {})
 
         expected = {
             'total': 1,
-            'rows': [presenters.AnnotationJSONPresenter(ann).asdict()],
-            'replies': [
-                presenters.AnnotationJSONPresenter(reply1).asdict(),
-                presenters.AnnotationJSONPresenter(reply2).asdict(),
-            ]
+            'rows': presentation_service.present_all(['row-1']),
+            'replies': presentation_service.present_all(['reply-1', 'reply-2'])
         }
 
         assert views.search(pyramid_request) == expected
@@ -234,9 +213,9 @@ class TestSearch(object):
 
 @pytest.mark.usefixtures('AnnotationEvent',
                          'AnnotationJSONPresenter',
+                         'create_schema',
                          'links_service',
                          'group_service',
-                         'schemas',
                          'storage')
 class TestCreate(object):
 
@@ -251,21 +230,19 @@ class TestCreate(object):
             with pytest.raises(views.PayloadError):
                 views.create(pyramid_request)
 
-    def test_it_inits_CreateAnnotationSchema(self, pyramid_request, schemas):
+    def test_it_inits_CreateAnnotationSchema(self, pyramid_request, create_schema):
         views.create(pyramid_request)
 
-        schemas.CreateAnnotationSchema.assert_called_once_with(pyramid_request)
+        create_schema.assert_called_once_with(pyramid_request)
 
-    def test_it_validates_the_posted_data(self, pyramid_request, schemas):
+    def test_it_validates_the_posted_data(self, pyramid_request, create_schema):
         """It should call validate() with a request.json_body."""
         views.create(pyramid_request)
 
-        schemas.CreateAnnotationSchema.return_value.validate\
-            .assert_called_once_with(pyramid_request.json_body)
+        create_schema.return_value.validate.assert_called_once_with(pyramid_request.json_body)
 
-    def test_it_raises_if_validate_raises(self, pyramid_request, schemas):
-        schemas.CreateAnnotationSchema.return_value.validate.side_effect = (
-            ValidationError('asplode'))
+    def test_it_raises_if_validate_raises(self, pyramid_request, create_schema):
+        create_schema.return_value.validate.side_effect = ValidationError('asplode')
 
         with pytest.raises(ValidationError) as exc:
             views.create(pyramid_request)
@@ -275,9 +252,9 @@ class TestCreate(object):
     def test_it_creates_the_annotation_in_storage(self,
                                                   pyramid_request,
                                                   storage,
-                                                  schemas,
+                                                  create_schema,
                                                   group_service):
-        schema = schemas.CreateAnnotationSchema.return_value
+        schema = create_schema.return_value
 
         views.create(pyramid_request)
 
@@ -338,22 +315,24 @@ class TestCreate(object):
         pyramid_request.notify_after_commit = mock.Mock()
         return pyramid_request
 
+    @pytest.fixture
+    def create_schema(self, patch):
+        return patch('h.views.api.CreateAnnotationSchema')
 
-@pytest.mark.usefixtures('AnnotationJSONPresenter', 'links_service')
+
+@pytest.mark.usefixtures('presentation_service')
 class TestRead(object):
 
     def test_it_returns_presented_annotation(self,
-                                             AnnotationJSONPresenter,
+                                             presentation_service,
                                              pyramid_request):
         context = mock.Mock()
-        presenter = mock.Mock()
-        AnnotationJSONPresenter.return_value = presenter
 
         result = views.read(context, pyramid_request)
 
-        AnnotationJSONPresenter.assert_called_once_with(context)
+        presentation_service.present.assert_called_once_with(context)
 
-        assert result == presenter.asdict()
+        assert result == presentation_service.present.return_value
 
 
 @pytest.mark.usefixtures('AnnotationJSONLDPresenter', 'links_service')
@@ -393,19 +372,18 @@ class TestReadJSONLD(object):
                          'AnnotationJSONPresenter',
                          'links_service',
                          'group_service',
-                         'schemas',
+                         'update_schema',
                          'storage')
 class TestUpdate(object):
 
-    def test_it_inits_the_schema(self, pyramid_request, schemas):
+    def test_it_inits_the_schema(self, pyramid_request, update_schema):
         context = mock.Mock()
 
         views.update(context, pyramid_request)
 
-        schemas.UpdateAnnotationSchema.assert_called_once_with(
-            pyramid_request,
-            context.annotation.target_uri,
-            context.annotation.groupid)
+        update_schema.assert_called_once_with(pyramid_request,
+                                              context.annotation.target_uri,
+                                              context.annotation.groupid)
 
     def test_it_raises_if_json_parsing_fails(self, pyramid_request):
         """It raises PayloadError if parsing of the request body fails."""
@@ -418,17 +396,16 @@ class TestUpdate(object):
             with pytest.raises(views.PayloadError):
                 views.update(mock.Mock(), pyramid_request)
 
-    def test_it_validates_the_posted_data(self, pyramid_request, schemas):
+    def test_it_validates_the_posted_data(self, pyramid_request, update_schema):
         context = mock.Mock()
-        schema = schemas.UpdateAnnotationSchema.return_value
+        schema = update_schema.return_value
 
         views.update(context, pyramid_request)
 
         schema.validate.assert_called_once_with(pyramid_request.json_body)
 
-    def test_it_raises_if_validate_raises(self, pyramid_request, schemas):
-        schemas.UpdateAnnotationSchema.return_value.validate\
-            .side_effect = ValidationError('asplode')
+    def test_it_raises_if_validate_raises(self, pyramid_request, update_schema):
+        update_schema.return_value.validate.side_effect = ValidationError('asplode')
 
         with pytest.raises(ValidationError):
             views.update(mock.Mock(), pyramid_request)
@@ -436,9 +413,9 @@ class TestUpdate(object):
     def test_it_updates_the_annotation_in_storage(self,
                                                   pyramid_request,
                                                   storage,
-                                                  schemas):
+                                                  update_schema):
         context = mock.Mock()
-        schema = schemas.UpdateAnnotationSchema.return_value
+        schema = update_schema.return_value
         schema.validate.return_value = mock.sentinel.validated_data
 
         views.update(context, pyramid_request)
@@ -516,6 +493,10 @@ class TestUpdate(object):
         pyramid_request.notify_after_commit = mock.Mock()
         return pyramid_request
 
+    @pytest.fixture
+    def update_schema(self, patch):
+        return patch('h.views.api.UpdateAnnotationSchema')
+
 
 @pytest.mark.usefixtures('AnnotationEvent',
                          'AnnotationJSONPresenter',
@@ -576,9 +557,16 @@ def links_service(pyramid_config):
 
 
 @pytest.fixture
+def presentation_service(pyramid_config):
+    svc = mock.Mock(spec_set=['present', 'present_all'])
+    pyramid_config.register_service(svc, name='annotation_json_presentation')
+    return svc
+
+
+@pytest.fixture
 def group_service(pyramid_config):
     group_service = mock.Mock(spec_set=['find'])
-    pyramid_config.register_service(group_service, iface='memex.interfaces.IGroupService')
+    pyramid_config.register_service(group_service, iface='h.interfaces.IGroupService')
     return group_service
 
 
@@ -591,11 +579,6 @@ def pyramid_request(pyramid_request):
 @pytest.fixture
 def search_lib(patch):
     return patch('h.views.api.search_lib')
-
-
-@pytest.fixture
-def schemas(patch):
-    return patch('h.views.api.schemas')
 
 
 @pytest.fixture

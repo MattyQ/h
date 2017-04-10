@@ -21,10 +21,9 @@ from datetime import datetime
 
 from pyramid import i18n
 
-from memex import schemas
-from memex import models
-from memex.db import types
-
+from h import models, schemas
+from h.db import types
+from h.models.document import update_document_metadata
 
 _ = i18n.TranslationStringFactory(__package__)
 
@@ -40,7 +39,7 @@ def fetch_annotation(session, id_):
     :type id_: str
 
     :returns: the annotation, if found, or None.
-    :rtype: memex.models.Annotation, NoneType
+    :rtype: h.models.Annotation, NoneType
     """
     try:
         return session.query(models.Annotation).get(id_)
@@ -69,7 +68,7 @@ def fetch_ordered_annotations(session, ids, query_processor=None):
     :type query_processor: callable
 
     :returns: the annotation, if found, or None.
-    :rtype: memex.models.Annotation, NoneType
+    :rtype: h.models.Annotation, NoneType
     """
     if not ids:
         return []
@@ -94,8 +93,8 @@ def create_annotation(request, data, group_service):
     :param data: a dictionary of annotation properties
     :type data: dict
 
-    :param group_service: a service object that adheres to ``memex.interfaces.IGroupService``
-    :type group_service: memex.interfaces.IGroupService
+    :param group_service: a service object that adheres to ``h.interfaces.IGroupService``
+    :type group_service: h.interfaces.IGroupService
 
     :returns: the created and flushed annotation
     :rtype: dict
@@ -134,7 +133,7 @@ def create_annotation(request, data, group_service):
     annotation.created = created
     annotation.updated = updated
 
-    document = models.update_document_metadata(
+    document = update_document_metadata(
         request.db,
         annotation.target_uri,
         document_meta_dicts,
@@ -167,7 +166,7 @@ def update_annotation(session, id_, data):
     :type data: dict
 
     :returns: the updated annotation
-    :rtype: memex.models.Annotation
+    :rtype: h.models.Annotation
 
     """
     updated = datetime.utcnow()
@@ -187,11 +186,11 @@ def update_annotation(session, id_, data):
     if document:
         document_uri_dicts = document['document_uri_dicts']
         document_meta_dicts = document['document_meta_dicts']
-        document = models.update_document_metadata(session,
-                                                   annotation.target_uri,
-                                                   document_meta_dicts,
-                                                   document_uri_dicts,
-                                                   updated=updated)
+        document = update_document_metadata(session,
+                                            annotation.target_uri,
+                                            document_meta_dicts,
+                                            document_uri_dicts,
+                                            updated=updated)
         annotation.document = document
 
     return annotation

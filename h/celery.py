@@ -63,11 +63,11 @@ celery.conf.update(
         'h.tasks.cleanup',
         'h.tasks.indexer',
         'h.tasks.mailer',
-        'h.tasks.nipsa',
     ),
     CELERY_ROUTES={
         'h.tasks.indexer.add_annotation': 'indexer',
         'h.tasks.indexer.delete_annotation': 'indexer',
+        'h.tasks.indexer.reindex_user_annotations': 'indexer',
     },
     CELERY_TASK_SERIALIZER='json',
     CELERY_QUEUES=[
@@ -95,12 +95,6 @@ def bootstrap_worker(sender, **kwargs):
     # Configure Sentry reporting on task failure
     register_signal(request.sentry)
     register_logger_signal(request.sentry, loglevel=logging.ERROR)
-
-
-@signals.task_prerun.connect
-def reset_feature_flags(sender, **kwargs):
-    """Reset feature flags before running each task."""
-    sender.app.request.feature.clear()
 
 
 @signals.task_prerun.connect

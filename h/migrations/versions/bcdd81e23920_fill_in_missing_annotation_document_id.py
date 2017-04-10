@@ -17,8 +17,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import subqueryload
 
-from memex.db import types
-from memex.uri import normalize as uri_normalize
+from h.db import types
+from h.util.uri import normalize as uri_normalize
 
 
 revision = 'bcdd81e23920'

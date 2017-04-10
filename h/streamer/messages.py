@@ -9,9 +9,9 @@ from h import presenters
 from h import realtime
 from h import storage
 from h.realtime import Consumer
-from memex.links import LinksService
-from memex.resources import AnnotationResource
+from h.resources import AnnotationResource
 from h.auth.util import translate_annotation_principals
+from h.services.links import LinksService
 from h.services.nipsa import NipsaService
 from h.services.groupfinder import GroupfinderService
 from h.streamer import websocket
@@ -94,8 +94,8 @@ def handle_annotation_event(message, sockets, settings, session):
     nipsa_service = NipsaService(session)
     user_nipsad = nipsa_service.is_flagged(annotation.userid)
 
-    auth_domain = text_type(settings.get('h.auth_domain', 'localhost'))
-    group_service = GroupfinderService(session, auth_domain)
+    authority = text_type(settings.get('h.authority', 'localhost'))
+    group_service = GroupfinderService(session, authority)
 
     for socket in sockets:
         reply = _generate_annotation_event(message, socket, annotation, user_nipsad, group_service)

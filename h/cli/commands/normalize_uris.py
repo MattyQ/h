@@ -3,9 +3,10 @@
 from collections import namedtuple
 import click
 
-from memex import models
-from memex import uri
-from memex.search import index
+from h import models
+from h.models.document import merge_documents
+from h.search import index
+from h.util import uri
 
 
 class Window(namedtuple('Window', ['start', 'end'])):
@@ -68,7 +69,7 @@ def _normalize_document_uris_window(session, window):
     for docuri in query:
         documents = models.Document.find_by_uris(session, [docuri.uri])
         if documents.count() > 1:
-            models.merge_documents(session, documents)
+            merge_documents(session, documents)
 
         existing = session.query(models.DocumentURI).filter(
             models.DocumentURI.id != docuri.id,
